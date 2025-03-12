@@ -19,7 +19,7 @@
     "vuex-router-sync": "5.0.0"
   },
   "devDependencies": {
-    "autoprefixer": "10.4.20",
+    "autoprefixer": "10.4.21",
     "babel-core": "6.26.3",
     "babel-helper-vue-jsx-merge-props": "2.0.3",
     "babel-loader": "8.4.1",
