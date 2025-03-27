@@ -20,7 +20,7 @@
     "imdb-api": "^4.0.3",
     "joi": "^17.0.0",
     "jsonwebtoken": "^9.0.0",
-    "mime": "^3.0.0",
+    "mime": "^4.0.0",
     "mongodb": "^4.0.0",
     "mongoose": "^6.0.0",
     "morgan": "^1.9.1",
