@@ -22,7 +22,7 @@
     "jsonwebtoken": "^9.0.0",
     "mime": "^4.0.0",
     "mongodb": "^6.0.0",
-    "mongoose": "^6.0.0",
+    "mongoose": "^8.0.0",
     "morgan": "^1.9.1",
     "nodemon": "^2.0.2",
     "opensubtitles-api": "^5.1.0",
