@@ -14,7 +14,7 @@
     "body-parser": "^2.0.0",
     "cors": "^2.8.5",
     "download": "^8.0.0",
-    "express": "^4.17.1",
+    "express": "^5.0.0",
     "fs": "0.0.2",
     "gmail-send": "^1.8.10",
     "imdb-api": "^4.0.3",
