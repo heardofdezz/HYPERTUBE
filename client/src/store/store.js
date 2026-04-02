@@ -1,34 +1,44 @@
-import Vue from 'vue'
-import Vuex from 'vuex'
+import { createStore } from 'vuex';
 
-Vue.use(Vuex)
-
-export default new Vuex.Store({
-    strict: true,
+export default createStore({
     state: {
-        token: null,
-        user: null,
-        isUserLoggedIn: null
+        token: localStorage.getItem('hypertube-token') || null,
+        user: JSON.parse(localStorage.getItem('hypertube-user') || 'null'),
+        isUserLoggedIn: !!localStorage.getItem('hypertube-token'),
     },
     mutations: {
-        setToken(state, token){
-            state.token = token
-            if(token){
-                state.isUserLoggedIn = true
-            }else{
-               state.isUserLoggedIn =  false 
+        setToken(state, token) {
+            state.token = token;
+            state.isUserLoggedIn = !!token;
+            if (token) {
+                localStorage.setItem('hypertube-token', token);
+            } else {
+                localStorage.removeItem('hypertube-token');
             }
         },
-        setUser(state, user){
-            state.user = user
-        }
+        setUser(state, user) {
+            state.user = user;
+            if (user) {
+                localStorage.setItem('hypertube-user', JSON.stringify(user));
+            } else {
+                localStorage.removeItem('hypertube-user');
+            }
+        },
     },
     actions: {
-        setToken({commit}, token){
-            commit('setToken', token)
+        setToken({ commit }, token) {
+            commit('setToken', token);
         },
-        setUser({commit}, user){
-            commit('setUser', user)
-        }
-    }
-})
+        setUser({ commit }, user) {
+            commit('setUser', user);
+        },
+        logout({ commit }) {
+            commit('setToken', null);
+            commit('setUser', null);
+        },
+    },
+    getters: {
+        isLoggedIn: (state) => state.isUserLoggedIn,
+        currentUser: (state) => state.user,
+    },
+});

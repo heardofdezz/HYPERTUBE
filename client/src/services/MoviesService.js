@@ -1,12 +1,10 @@
-import Api from '@/services/Api'
+import Api from '@/services/Api';
 
 export default {
- 
-    MoviesIndex(){
-        return Api().get('movies')
+    MoviesIndex(params) {
+        return Api().get('movies', { params });
     },
-    Categories(){
-        return Api().get('categories')
+    Categories() {
+        return Api().get('categories');
     },
-}
-
+};
