@@ -212,12 +212,20 @@ export default {
                 this.searchTorrents();
             }
         },
+        '$route.query.category'() {
+            this.fetchMovies();
+        },
     },
     methods: {
         async fetchMovies() {
             this.loading = true;
             try {
-                const response = await MoviesService.MoviesIndex({ limit: 100 });
+                const params = { limit: 100 };
+                const category = this.$route.query.category;
+                if (category) {
+                    params.category = category === 'Anime' ? 'animation' : category.toLowerCase();
+                }
+                const response = await MoviesService.MoviesIndex(params);
                 this.movies = response.data || [];
                 if (this.movies.length > 0) {
                     const rated = this.movies
