@@ -30,6 +30,7 @@
     "pump": "^3.0.0",
     "randomstring": "^1.1.5",
     "srt-to-vtt": "^1.1.3",
+    "torrent-search-api": "^2.1.4",
     "torrent-stream": "^1.2.0"
   },
   "devDependencies": {

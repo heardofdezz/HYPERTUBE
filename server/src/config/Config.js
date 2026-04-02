@@ -23,5 +23,10 @@ module.exports = {
         useragent: process.env.OPENSUBTITLES_USERAGENT || 'TemporaryUserAgent',
         username: process.env.OPENSUBTITLES_USERNAME || '',
         password: process.env.OPENSUBTITLES_PASSWORD || ''
+    },
+    torrent: {
+        providers: (process.env.TORRENT_PROVIDERS || '1337x,ThePirateBay,Yts').split(',').map(s => s.trim()),
+        defaultLimit: Number(process.env.TORRENT_SEARCH_LIMIT) || 20,
+        cacheTTLHours: Number(process.env.TORRENT_CACHE_TTL_HOURS) || 24,
     }
 }

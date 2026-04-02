@@ -16,7 +16,7 @@ const commentSchema = new mongoose.Schema({
 const movieSchema = new mongoose.Schema({
     provider: {
         type: String,
-        enum: ['yts', 'eztv']
+        trim: true
     },
     imdb_code: {
         type: String,
@@ -94,8 +94,16 @@ const movieSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
-    comments: [commentSchema]
+    comments: [commentSchema],
+    lastSearched: {
+        type: Date,
+        default: Date.now
+    }
 });
+
+movieSchema.index({ imdb_code: 1, provider: 1 }, { unique: true, sparse: true });
+movieSchema.index({ title: 'text' });
+movieSchema.index({ lastSearched: 1 });
 
 const Movie = mongoose.model('Movie', movieSchema);
 
