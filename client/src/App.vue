@@ -1,34 +1,55 @@
 <template>
-  <div id="app">
-<link href="https://fonts.googleapis.com/css2?family=Bangers&display=swap" rel="stylesheet">
-     <page-header/>
-   <v-app>
-      <v-content>
-        <v-container fluid fill-height>
-              <router-view/>
-        </v-container>
-      </v-content>
-    </v-app>
-  </div>
+  <v-app>
+    <AppHeader />
+    <v-main>
+      <router-view />
+    </v-main>
+  </v-app>
 </template>
 
 <script>
-import PageHeader from '@/components/Header.vue'
+import AppHeader from '@/components/Header.vue';
+
 export default {
-  name: 'App',
-  components: {
-    PageHeader
-  }
-}
+    name: 'App',
+    components: {
+        AppHeader,
+    },
+};
 </script>
 
 <style>
-#app {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  /* margin-top: 60px; */
-  width: 100%;
-  height: 100%;
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    background: #141414;
+    color: #fff;
+    font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+}
+::-webkit-scrollbar-track {
+    background: #141414;
+}
+::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+a {
+    text-decoration: none;
+    color: inherit;
 }
 </style>
