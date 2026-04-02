@@ -6,7 +6,8 @@ const morgan = require('morgan');
 const mongoose = require('mongoose');
 const Config = require('./config/Config');
 const app = express();
-const importMovies = require('./config/setup');
+const TorrentSearchService = require('./services/TorrentSearchService');
+const { seedMovies, enrichUnenrichedMovies } = require('./config/setup');
 const movieRouter = require('./routers/movie');
 const commentRouter = require('./routers/comment');
 
@@ -31,7 +32,17 @@ require('./routes')(app);
 
 // Connecting to Mongo Database when connected then launching back-end Server
 mongoose.connect(Config.db.uri).then(() => {
-    //importMovies();
+    // Initialize torrent search providers
+    TorrentSearchService.init();
+
+    // Fire-and-forget background seeding
+    seedMovies().catch((e) => console.error('Seeder error:', e));
+
+    // Periodic IMDB enrichment (every 6 hours)
+    setInterval(() => {
+        enrichUnenrichedMovies().catch((e) => console.error('Enrichment error:', e));
+    }, 6 * 60 * 60 * 1000);
+
     app.use(movieRouter);
     app.use(commentRouter);
     app.listen(Config.port, () => {

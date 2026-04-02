@@ -7,4 +7,7 @@ export default {
     Categories() {
         return Api().get('categories');
     },
+    Search(params) {
+        return Api().get('search', { params });
+    },
 };

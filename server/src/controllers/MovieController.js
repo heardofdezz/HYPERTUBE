@@ -28,7 +28,7 @@ module.exports = {
             let filters = query && query.length > 0
                 ? { title: { $regex: escapeRegex(query), $options: 'i' } }
                 : {};
-            filters = provider && (provider === 'yts' || provider === 'eztv')
+            filters = provider
                 ? { ...filters, provider }
                 : filters;
             filters = category

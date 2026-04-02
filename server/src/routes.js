@@ -1,6 +1,7 @@
 const UserController = require('./controllers/UserController');
 const UserControllerPolicy = require('./policies/UserControllerPolicy');
 const MovieController = require('./controllers/MovieController');
+const SearchController = require('./controllers/SearchController');
 
 module.exports = (app) => {
     app.post('/register',
@@ -15,4 +16,6 @@ module.exports = (app) => {
         UserController.verify);
 
     app.get('/movies', MovieController.MoviesIndex);
+
+    app.get('/search', SearchController.search);
 };

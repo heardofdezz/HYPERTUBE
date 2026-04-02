@@ -1,88 +1,153 @@
 <template>
     <div class="browse-page">
-        <!-- Hero Banner -->
-        <div class="hero-banner" v-if="featuredMovie">
-            <div class="hero-backdrop" :style="{ backgroundImage: `url(${featuredMovie.cover})` }"></div>
-            <div class="hero-gradient"></div>
-            <div class="hero-info">
-                <h1 class="hero-movie-title">{{ featuredMovie.title }}</h1>
-                <p class="hero-movie-meta">
-                    <span class="match">{{ Math.round((featuredMovie.rating || 7) * 10) }}% Match</span>
-                    <span>{{ featuredMovie.year }}</span>
-                    <span v-if="featuredMovie.runtime">{{ featuredMovie.runtime }}</span>
-                </p>
-                <p class="hero-movie-summary">{{ truncate(featuredMovie.summary, 200) }}</p>
-                <div class="hero-actions">
-                    <button class="btn-play" @click="goToMovie(featuredMovie)">
-                        <v-icon size="24">mdi-play</v-icon> Play
-                    </button>
-                    <button class="btn-info" @click="goToMovie(featuredMovie)">
-                        <v-icon size="20">mdi-information-outline</v-icon> More Info
-                    </button>
-                </div>
-            </div>
+        <!-- Search Overlay -->
+        <div class="search-section" :class="{ 'search-active': searchActive }">
+            <form @submit.prevent="searchTorrents" class="search-form">
+                <v-icon size="22" class="search-form-icon">mdi-magnify</v-icon>
+                <input
+                    v-model="searchQuery"
+                    type="text"
+                    placeholder="Search movies, shows..."
+                    class="search-form-input"
+                    @focus="searchActive = true"
+                />
+                <button v-if="searchQuery" type="button" class="search-clear" @click="clearSearch">
+                    <v-icon size="18">mdi-close</v-icon>
+                </button>
+            </form>
         </div>
 
-        <!-- Loading State -->
-        <div v-if="loading" class="loading-state">
-            <div class="skeleton-row" v-for="n in 3" :key="n">
-                <div class="skeleton-title"></div>
-                <div class="skeleton-cards">
-                    <div class="skeleton-card" v-for="m in 6" :key="m"></div>
-                </div>
+        <!-- Search Results -->
+        <div v-if="searchQuery && searchActive" class="search-results-section">
+            <div v-if="searching" class="search-loading">
+                <div class="spinner"></div>
+                <p>Searching torrents across providers...</p>
             </div>
-        </div>
-
-        <!-- Category Rows -->
-        <div class="browse-rows" v-else>
-            <div
-                class="category-row"
-                v-for="(movies, category) in moviesByCategory"
-                :key="category"
-            >
-                <h2 class="row-title">{{ category }}</h2>
-                <div class="row-container">
-                    <button class="scroll-btn scroll-left" @click="scrollRow($event, -1)">
-                        <v-icon>mdi-chevron-left</v-icon>
-                    </button>
-                    <div class="row-movies">
-                        <div
-                            class="movie-card"
-                            v-for="movie in movies"
-                            :key="movie._id"
-                            @click="goToMovie(movie)"
-                        >
-                            <img
-                                :src="movie.cover || 'https://via.placeholder.com/200x300/141414/666?text=No+Poster'"
-                                :alt="movie.title"
-                                class="movie-poster"
-                                loading="lazy"
-                            />
-                            <div class="card-hover">
-                                <h3 class="card-title">{{ movie.title }}</h3>
-                                <div class="card-meta">
-                                    <span class="card-match">{{ Math.round((movie.rating || 5) * 10) }}%</span>
-                                    <span>{{ movie.year }}</span>
-                                </div>
-                                <div class="card-genres">
-                                    <span v-for="(genre, i) in (movie.genres || []).slice(0, 3)" :key="i">
-                                        {{ genre }}
-                                    </span>
-                                </div>
+            <div v-else-if="searchResults.length > 0" class="search-results-grid">
+                <h2 class="results-title">Results for "{{ searchQuery }}"</h2>
+                <div class="results-grid">
+                    <div
+                        class="movie-card"
+                        v-for="movie in searchResults"
+                        :key="movie._id"
+                        @click="goToMovie(movie)"
+                    >
+                        <img
+                            :src="movie.cover || 'https://via.placeholder.com/200x300/141414/666?text=No+Poster'"
+                            :alt="movie.title"
+                            class="movie-poster"
+                            loading="lazy"
+                        />
+                        <div class="card-hover">
+                            <h3 class="card-title">{{ movie.title }}</h3>
+                            <div class="card-meta">
+                                <span v-if="movie.seeds" class="card-seeds">
+                                    <v-icon size="12" color="#46d369">mdi-arrow-up</v-icon>
+                                    {{ movie.seeds }}
+                                </span>
+                                <span v-if="movie.rating" class="card-match">{{ Math.round(movie.rating * 10) }}%</span>
+                                <span v-if="movie.year">{{ movie.year }}</span>
+                                <span v-if="movie.provider" class="card-provider">{{ movie.provider }}</span>
+                            </div>
+                            <div class="card-genres" v-if="movie.genres && movie.genres.length">
+                                <span v-for="(genre, i) in movie.genres.slice(0, 3)" :key="i">{{ genre }}</span>
                             </div>
                         </div>
                     </div>
-                    <button class="scroll-btn scroll-right" @click="scrollRow($event, 1)">
-                        <v-icon>mdi-chevron-right</v-icon>
-                    </button>
+                </div>
+            </div>
+            <div v-else-if="searchDone" class="empty-state">
+                <v-icon size="60" color="#555">mdi-magnify-close</v-icon>
+                <p>No results found for "{{ searchQuery }}"</p>
+            </div>
+        </div>
+
+        <!-- Browse Content (hidden during search) -->
+        <template v-if="!searchActive || !searchQuery">
+            <!-- Hero Banner -->
+            <div class="hero-banner" v-if="featuredMovie">
+                <div class="hero-backdrop" :style="{ backgroundImage: `url(${featuredMovie.cover})` }"></div>
+                <div class="hero-gradient"></div>
+                <div class="hero-info">
+                    <h1 class="hero-movie-title">{{ featuredMovie.title }}</h1>
+                    <p class="hero-movie-meta">
+                        <span class="match">{{ Math.round((featuredMovie.rating || 7) * 10) }}% Match</span>
+                        <span>{{ featuredMovie.year }}</span>
+                        <span v-if="featuredMovie.runtime">{{ featuredMovie.runtime }}</span>
+                    </p>
+                    <p class="hero-movie-summary">{{ truncate(featuredMovie.summary, 200) }}</p>
+                    <div class="hero-actions">
+                        <button class="btn-play" @click="goToMovie(featuredMovie)">
+                            <v-icon size="24">mdi-play</v-icon> Play
+                        </button>
+                        <button class="btn-info" @click="goToMovie(featuredMovie)">
+                            <v-icon size="20">mdi-information-outline</v-icon> More Info
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <div v-if="Object.keys(moviesByCategory).length === 0" class="empty-state">
-                <v-icon size="80" color="#555">mdi-movie-open-outline</v-icon>
-                <p>No movies found. Check back later!</p>
+            <!-- Loading State -->
+            <div v-if="loading" class="loading-state">
+                <div class="skeleton-row" v-for="n in 3" :key="n">
+                    <div class="skeleton-title"></div>
+                    <div class="skeleton-cards">
+                        <div class="skeleton-card" v-for="m in 6" :key="m"></div>
+                    </div>
+                </div>
             </div>
-        </div>
+
+            <!-- Category Rows -->
+            <div class="browse-rows" v-else>
+                <div
+                    class="category-row"
+                    v-for="(movies, category) in moviesByCategory"
+                    :key="category"
+                >
+                    <h2 class="row-title">{{ category }}</h2>
+                    <div class="row-container">
+                        <button class="scroll-btn scroll-left" @click="scrollRow($event, -1)">
+                            <v-icon>mdi-chevron-left</v-icon>
+                        </button>
+                        <div class="row-movies">
+                            <div
+                                class="movie-card"
+                                v-for="movie in movies"
+                                :key="movie._id"
+                                @click="goToMovie(movie)"
+                            >
+                                <img
+                                    :src="movie.cover || 'https://via.placeholder.com/200x300/141414/666?text=No+Poster'"
+                                    :alt="movie.title"
+                                    class="movie-poster"
+                                    loading="lazy"
+                                />
+                                <div class="card-hover">
+                                    <h3 class="card-title">{{ movie.title }}</h3>
+                                    <div class="card-meta">
+                                        <span class="card-match">{{ Math.round((movie.rating || 5) * 10) }}%</span>
+                                        <span>{{ movie.year }}</span>
+                                    </div>
+                                    <div class="card-genres">
+                                        <span v-for="(genre, i) in (movie.genres || []).slice(0, 3)" :key="i">
+                                            {{ genre }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="scroll-btn scroll-right" @click="scrollRow($event, 1)">
+                            <v-icon>mdi-chevron-right</v-icon>
+                        </button>
+                    </div>
+                </div>
+
+                <div v-if="Object.keys(moviesByCategory).length === 0" class="empty-state">
+                    <v-icon size="80" color="#555">mdi-movie-open-outline</v-icon>
+                    <p>No movies found. Try searching for something!</p>
+                </div>
+            </div>
+        </template>
     </div>
 </template>
 
@@ -96,6 +161,11 @@ export default {
             movies: [],
             loading: true,
             featuredMovie: null,
+            searchQuery: '',
+            searchActive: false,
+            searching: false,
+            searchDone: false,
+            searchResults: [],
         };
     },
     computed: {
@@ -114,7 +184,6 @@ export default {
                     });
                 }
             });
-            // Sort categories by number of movies (desc), take top 10
             const sorted = Object.entries(cats)
                 .sort((a, b) => b[1].length - a[1].length)
                 .slice(0, 10);
@@ -126,16 +195,30 @@ export default {
         },
     },
     async mounted() {
+        // Check for search query from URL (from navbar search)
+        if (this.$route.query.q) {
+            this.searchQuery = this.$route.query.q;
+            this.searchActive = true;
+            await this.searchTorrents();
+        }
         await this.fetchMovies();
+    },
+    watch: {
+        '$route.query.q'(newQ) {
+            if (newQ) {
+                this.searchQuery = newQ;
+                this.searchActive = true;
+                this.searchTorrents();
+            }
+        },
     },
     methods: {
         async fetchMovies() {
             this.loading = true;
             try {
-                const response = await MoviesService.MoviesIndex();
+                const response = await MoviesService.MoviesIndex({ limit: 100 });
                 this.movies = response.data || [];
                 if (this.movies.length > 0) {
-                    // Pick a random highly-rated movie as featured
                     const rated = this.movies
                         .filter((m) => m.cover && m.summary && m.rating >= 6)
                         .sort((a, b) => (b.rating || 0) - (a.rating || 0));
@@ -148,6 +231,32 @@ export default {
             } finally {
                 this.loading = false;
             }
+        },
+        async searchTorrents() {
+            if (!this.searchQuery.trim() || this.searchQuery.trim().length < 2) return;
+
+            this.searching = true;
+            this.searchDone = false;
+            this.searchResults = [];
+
+            try {
+                const response = await MoviesService.Search({
+                    query: this.searchQuery.trim(),
+                    limit: 40,
+                });
+                this.searchResults = response.data.results || [];
+            } catch (err) {
+                console.error('Search failed:', err);
+            } finally {
+                this.searching = false;
+                this.searchDone = true;
+            }
+        },
+        clearSearch() {
+            this.searchQuery = '';
+            this.searchActive = false;
+            this.searchResults = [];
+            this.searchDone = false;
         },
         goToMovie(movie) {
             this.$router.push({ name: 'MovieDetail', params: { id: movie._id } });
@@ -171,6 +280,86 @@ export default {
     background: #141414;
     min-height: 100vh;
     padding-bottom: 60px;
+}
+
+/* Search Section */
+.search-section {
+    position: sticky;
+    top: 68px;
+    z-index: 50;
+    padding: 16px 4%;
+    transition: background 0.3s;
+}
+.search-section.search-active {
+    background: #141414;
+}
+.search-form {
+    display: flex;
+    align-items: center;
+    background: #333;
+    border-radius: 4px;
+    padding: 0 16px;
+    max-width: 600px;
+}
+.search-form-icon {
+    color: #999;
+    flex-shrink: 0;
+}
+.search-form-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #fff;
+    font-size: 1rem;
+    padding: 14px 12px;
+}
+.search-form-input::placeholder { color: #777; }
+.search-clear {
+    background: none;
+    border: none;
+    color: #999;
+    cursor: pointer;
+    padding: 4px;
+}
+
+/* Search Results */
+.search-results-section {
+    padding: 20px 4%;
+    min-height: 60vh;
+}
+.search-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 0;
+    gap: 16px;
+}
+.search-loading p {
+    color: #888;
+    font-size: 0.95rem;
+}
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #333;
+    border-top-color: #E50914;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.results-title {
+    color: #e5e5e5;
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 20px;
+}
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
 }
 
 /* Hero Banner */
@@ -363,10 +552,21 @@ export default {
     font-size: 0.75rem;
     color: #aaa;
     margin-bottom: 4px;
+    align-items: center;
 }
 .card-match {
     color: #46d369;
     font-weight: 700;
+}
+.card-seeds {
+    color: #46d369;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+.card-provider {
+    color: #888;
+    text-transform: capitalize;
 }
 .card-genres {
     display: flex;
@@ -422,10 +622,18 @@ export default {
     font-size: 1.1rem;
 }
 
+/* Grid layout for search results */
+.results-grid .movie-card {
+    flex: none;
+    width: 100%;
+    height: 300px;
+}
+
 @media (max-width: 768px) {
     .hero-banner { height: 60vh; min-height: 400px; }
     .hero-movie-title { font-size: 1.8rem; }
     .movie-card { flex: 0 0 140px; height: 210px; }
     .movie-card:hover { transform: scale(1.1); }
+    .results-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 }
 </style>

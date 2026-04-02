@@ -1,154 +1,100 @@
-const axios = require('axios');
+const TorrentSearchService = require('../services/TorrentSearchService');
+const ImdbService = require('../services/ImdbService');
 const Movie = require('../models/Movie');
-const { asyncForEach } = require('../functions/back');
-const imdb = require('imdb-api');
-const Config = require('./Config');
 
-const getImdbData = async (movie) => {
-    return imdb.get(movie.imdb_code ? { id: movie.imdb_code } : { name: movie.title }, { apiKey: Config.imdb.apiKey }).then((data) => {
-        if (!data) {
-            throw 'There is not imdbcode for ' + movie.title;
-        }
-        if (data.type !== 'movie') {
-            throw 'The movie is not a movie';
-        }
-        movie.title = data.title;
-        movie.director = data.director ? data.director : '';
-        movie.writer = data.writer ? data.writer : '';
-        movie.imdb_code = data.imdbid ? data.imdbid : movie.imdb_code;
-        movie.year = data.year;
-        movie.rating = data.rating;
-        movie.actors = data.actors ? data.actors : '';
-        movie.country = data.country ? data.country : '';
-        movie.genres = data.genres ? data.genres.split(',') : [];
-        movie.summary = data.plot ? data.plot : '';
-        movie.cover = data.poster ? data.poster : '';
-        movie.runtime = data.runtime ? data.runtime : '';
+const SEED_QUERIES = [
+    'popular movies', 'top rated', 'action', 'comedy', 'drama',
+    'thriller', 'horror', 'sci-fi', 'adventure', 'romance'
+];
 
-        return movie;
-    })
-        .then(async (movie) => {
-            await movie.save();
-            console.log('\x1b[32m', movie.provider.toUpperCase(), ': Movie added!', '\x1b[0m');
-            return Promise.resolve();
-        })
-        .catch((e) => {
-            return Promise.reject(e);
-        });
-}
+const seedMovies = async () => {
+    console.log('Background seeder: starting...');
 
-const saveEztv = async (data) => {
-    try {
-        const imdb_code = 'tt' + data.imdb_id;
-        const magnet = data.magnet_url;
-        const seeds = data.seeds ? data.seeds : 0;
-
-        if (!imdb_code || !magnet) {
-            return;
-        }
-        const findMovie = await Movie.findOne({ provider: 'eztv', imdb_code: imdb_code });
-        if (!!findMovie) {
-            if (findMovie.magnet.every((elem) => elem.magnet !== magnet)) {
-                findMovie.magnet.push({
-                    magnet,
-                    seeds
-                });
-                await findMovie.save();
-                console.log('\x1b[32m', 'EZTV: Magnet successfully added to the movie ', findMovie.title, '\x1b[0m')
-            } else {
-                console.log('\x1b[34m', 'EZTV: Movie already added.', '\x1b[0m');
-            }
-        } else {
-            const movie = new Movie({
-                provider: 'eztv',
-                imdb_code,
-                magnet: [{
-                    magnet,
-                    seeds
-                }]
-            });
-            await getImdbData(movie);
-        }
-    } catch (e) {
-        if (e.statusCode && e.statusCode === 401) {
-            return Promise.reject('Free IMDB API quota limit reached');
-        }
-        console.error('\x1b[31m', 'EZTV Error: ', e, '\x1b[0m');
-    }
-}
-
-const saveYts = async (data) => {
-    if (!data.torrents) {
-        return;
-    }
-    const findMovie = await Movie.findOne({ provider: 'yts', imdb_code: data.imdb_code });
-    if (!findMovie) {
-        const movie = new Movie({
-            provider: 'yts',
-            imdb_code: data.imdb_code,
-            title: data.title,
-            torrent: data.torrents
-        });
+    for (const query of SEED_QUERIES) {
         try {
-            await getImdbData(movie);
+            const torrents = await TorrentSearchService.search(query, 'Movies', 20);
+            console.log(`Seeder: found ${torrents.length} results for "${query}"`);
+
+            for (const torrent of torrents) {
+                const cleanedTitle = torrent.title
+                    .replace(/\.(mkv|avi|mp4|mov)$/i, '')
+                    .replace(/\./g, ' ')
+                    .replace(/\s*(720p|1080p|2160p|4k|BluRay|BRRip|WEBRip|HDRip|x264|x265|YIFY|YTS)\s*/gi, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+                if (!cleanedTitle) continue;
+
+                try {
+                    await Movie.findOneAndUpdate(
+                        { title: { $regex: `^${cleanedTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }, provider: torrent.provider },
+                        {
+                            $set: {
+                                title: cleanedTitle,
+                                provider: torrent.provider,
+                                seeds: torrent.seeds,
+                                lastSearched: new Date(),
+                            },
+                            $addToSet: torrent.magnet
+                                ? { magnet: { magnet: torrent.magnet, seeds: torrent.seeds } }
+                                : {},
+                        },
+                        { upsert: true, new: true, setDefaultsOnInsert: true }
+                    );
+                } catch (e) {
+                    if (e.code !== 11000) {
+                        console.error(`Seeder: failed to upsert "${cleanedTitle}":`, e.message);
+                    }
+                }
+            }
+
+            // Delay between queries to avoid hammering providers
+            await new Promise((r) => setTimeout(r, 2000));
         } catch (e) {
-            if (e.statusCode && e.statusCode === 401) {
-                return Promise.reject('Free IMDB API quota limit reached');
-            }
-            console.error('\x1b[31m', 'YTS Error: ', e, '\x1b[0m');
+            console.error(`Seeder: failed for query "${query}":`, e.message);
         }
-    } else {
-        console.log('\x1b[34m', 'YTS: Movie already added.', '\x1b[0m')
     }
-}
 
-const downloadMovieData = async (page, provider) => {
-    const url = provider === 'yts'
-        ? 'https://ytss.unblocked.is/api/v2/list_movies.json?limit=100&page='
-        : 'https://eztv1.unblocked.is/api/get-torrents?limit=100&page=';
-
-    try {
-        const response = await axios.get(url + page);
-        const body = response.data;
-
-        if (provider === 'yts' ? !body.data : !body.torrents) {
-            return;
-        }
-
-        const movies = provider === 'yts' ? body.data.movies : body.torrents;
-
-        if (!movies) {
-            return;
-        }
-
-        await asyncForEach(movies, async (movie) => {
-            if (provider === 'yts') {
-                await saveYts(movie);
-            } else {
-                await saveEztv(movie);
-            }
-        });
-
-        await downloadMovieData(page + 1, provider);
-    } catch (e) {
-        console.error('\x1b[31m', 'An error occured in provider ' + provider + ' :\n' + e, '\x1b[0m');
-    }
-}
-
-const importMovies = async () => {
-    try {
-        const providers = ['yts', 'eztv'];
-
-        providers.forEach((provider) => {
-            downloadMovieData(1, provider).then(() => {
-                console.log('\x1b[32m', provider + ' successfully set up !', '\x1b[0m');
-            }).catch((e) => {
-                console.error('\x1b[31m', 'An error occured in provider ' + provider + ' :\n' + e, '\x1b[0m');
-            });
-        });
-    } catch (e) {
-        console.log(e);
-    }
+    console.log('Background seeder: complete');
 };
 
-module.exports = importMovies;
+const enrichUnenrichedMovies = async () => {
+    console.log('Enrichment: looking for unenriched movies...');
+
+    const unenriched = await Movie.find(
+        { $or: [{ cover: { $in: [null, ''] } }, { rating: null }] },
+        null,
+        { limit: 50, sort: { lastSearched: -1 } }
+    );
+
+    if (unenriched.length === 0) {
+        console.log('Enrichment: all movies are enriched');
+        return;
+    }
+
+    console.log(`Enrichment: enriching ${unenriched.length} movies...`);
+
+    for (const movie of unenriched) {
+        try {
+            const metadata = movie.imdb_code
+                ? await ImdbService.enrichByImdbCode(movie.imdb_code)
+                : await ImdbService.enrichByTitle(movie.title);
+
+            if (metadata) {
+                await Movie.updateOne(
+                    { _id: movie._id },
+                    { $set: { ...metadata, lastSearched: new Date() } }
+                );
+            }
+        } catch (e) {
+            // Skip and continue
+        }
+
+        // Rate-limit delay
+        await new Promise((r) => setTimeout(r, 500));
+    }
+
+    console.log('Enrichment: complete');
+};
+
+module.exports = { seedMovies, enrichUnenrichedMovies };
