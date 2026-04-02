@@ -3,7 +3,7 @@
         <!-- Search Overlay -->
         <div class="search-section" :class="{ 'search-active': searchActive }">
             <form @submit.prevent="searchTorrents" class="search-form">
-                <v-icon size="22" class="search-form-icon">mdi-magnify</v-icon>
+                <Search :size="20" class="search-form-icon" />
                 <input
                     v-model="searchQuery"
                     type="text"
@@ -12,7 +12,7 @@
                     @focus="searchActive = true"
                 />
                 <button v-if="searchQuery" type="button" class="search-clear" @click="clearSearch">
-                    <v-icon size="18">mdi-close</v-icon>
+                    <X :size="16" />
                 </button>
             </form>
         </div>
@@ -42,7 +42,7 @@
                             <h3 class="card-title">{{ movie.title }}</h3>
                             <div class="card-meta">
                                 <span v-if="movie.seeds" class="card-seeds">
-                                    <v-icon size="12" color="#46d369">mdi-arrow-up</v-icon>
+                                    <ArrowUp :size="12" />
                                     {{ movie.seeds }}
                                 </span>
                                 <span v-if="movie.rating" class="card-match">{{ Math.round(movie.rating * 10) }}%</span>
@@ -57,7 +57,7 @@
                 </div>
             </div>
             <div v-else-if="searchDone" class="empty-state">
-                <v-icon size="60" color="#555">mdi-magnify-close</v-icon>
+                <SearchX :size="60" color="#555" />
                 <p>No results found for "{{ searchQuery }}"</p>
             </div>
         </div>
@@ -78,10 +78,10 @@
                     <p class="hero-movie-summary">{{ truncate(featuredMovie.summary, 200) }}</p>
                     <div class="hero-actions">
                         <button class="btn-play" @click="goToMovie(featuredMovie)">
-                            <v-icon size="24">mdi-play</v-icon> Play
+                            <Play :size="22" /> Play
                         </button>
                         <button class="btn-info" @click="goToMovie(featuredMovie)">
-                            <v-icon size="20">mdi-information-outline</v-icon> More Info
+                            <Info :size="18" /> More Info
                         </button>
                     </div>
                 </div>
@@ -107,7 +107,7 @@
                     <h2 class="row-title">{{ category }}</h2>
                     <div class="row-container">
                         <button class="scroll-btn scroll-left" @click="scrollRow($event, -1)">
-                            <v-icon>mdi-chevron-left</v-icon>
+                            <ChevronLeft :size="24" />
                         </button>
                         <div class="row-movies">
                             <div
@@ -137,13 +137,13 @@
                             </div>
                         </div>
                         <button class="scroll-btn scroll-right" @click="scrollRow($event, 1)">
-                            <v-icon>mdi-chevron-right</v-icon>
+                            <ChevronRight :size="24" />
                         </button>
                     </div>
                 </div>
 
                 <div v-if="Object.keys(moviesByCategory).length === 0" class="empty-state">
-                    <v-icon size="80" color="#555">mdi-movie-open-outline</v-icon>
+                    <Film :size="80" color="#555" />
                     <p>No movies found. Try searching for something!</p>
                 </div>
             </div>
@@ -153,9 +153,11 @@
 
 <script>
 import MoviesService from '@/services/MoviesService';
+import { Search, X, SearchX, Play, Info, ChevronLeft, ChevronRight, ArrowUp, Film } from 'lucide-vue-next';
 
 export default {
     name: 'BrowsePage',
+    components: { Search, X, SearchX, Play, Info, ChevronLeft, ChevronRight, ArrowUp, Film },
     data() {
         return {
             movies: [],
@@ -195,7 +197,6 @@ export default {
         },
     },
     async mounted() {
-        // Check for search query from URL (from navbar search)
         if (this.$route.query.q) {
             this.searchQuery = this.$route.query.q;
             this.searchActive = true;
@@ -234,11 +235,9 @@ export default {
         },
         async searchTorrents() {
             if (!this.searchQuery.trim() || this.searchQuery.trim().length < 2) return;
-
             this.searching = true;
             this.searchDone = false;
             this.searchResults = [];
-
             try {
                 const response = await MoviesService.Search({
                     query: this.searchQuery.trim(),
@@ -276,358 +275,74 @@ export default {
 </script>
 
 <style scoped>
-.browse-page {
-    background: #141414;
-    min-height: 100vh;
-    padding-bottom: 60px;
-}
+.browse-page { background: #141414; min-height: 100vh; padding-bottom: 60px; }
 
-/* Search Section */
-.search-section {
-    position: sticky;
-    top: 68px;
-    z-index: 50;
-    padding: 16px 4%;
-    transition: background 0.3s;
-}
-.search-section.search-active {
-    background: #141414;
-}
-.search-form {
-    display: flex;
-    align-items: center;
-    background: #333;
-    border-radius: 4px;
-    padding: 0 16px;
-    max-width: 600px;
-}
-.search-form-icon {
-    color: #999;
-    flex-shrink: 0;
-}
-.search-form-input {
-    flex: 1;
-    background: transparent;
-    border: none;
-    outline: none;
-    color: #fff;
-    font-size: 1rem;
-    padding: 14px 12px;
-}
+.search-section { position: sticky; top: 68px; z-index: 50; padding: 16px 4%; transition: background 0.3s; }
+.search-section.search-active { background: #141414; }
+.search-form { display: flex; align-items: center; background: #333; border-radius: 4px; padding: 0 16px; max-width: 600px; }
+.search-form-icon { color: #999; flex-shrink: 0; }
+.search-form-input { flex: 1; background: transparent; border: none; outline: none; color: #fff; font-size: 1rem; padding: 14px 12px; }
 .search-form-input::placeholder { color: #777; }
-.search-clear {
-    background: none;
-    border: none;
-    color: #999;
-    cursor: pointer;
-    padding: 4px;
-}
+.search-clear { background: none; border: none; color: #999; cursor: pointer; padding: 4px; display: flex; }
 
-/* Search Results */
-.search-results-section {
-    padding: 20px 4%;
-    min-height: 60vh;
-}
-.search-loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 80px 0;
-    gap: 16px;
-}
-.search-loading p {
-    color: #888;
-    font-size: 0.95rem;
-}
-.spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid #333;
-    border-top-color: #E50914;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
+.search-results-section { padding: 20px 4%; min-height: 60vh; }
+.search-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 0; gap: 16px; }
+.search-loading p { color: #888; font-size: 0.95rem; }
+.spinner { width: 40px; height: 40px; border: 3px solid #333; border-top-color: #E50914; border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.results-title {
-    color: #e5e5e5;
-    font-size: 1.3rem;
-    font-weight: 700;
-    margin-bottom: 20px;
-}
-.results-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 12px;
-}
+.results-title { color: #e5e5e5; font-size: 1.3rem; font-weight: 700; margin-bottom: 20px; }
+.results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
 
-/* Hero Banner */
-.hero-banner {
-    position: relative;
-    height: 80vh;
-    min-height: 500px;
-    display: flex;
-    align-items: flex-end;
-    padding: 0 4% 8%;
-}
-.hero-backdrop {
-    position: absolute;
-    inset: 0;
-    background-size: cover;
-    background-position: center top;
-    filter: brightness(0.5);
-}
-.hero-gradient {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-        to bottom,
-        transparent 0%,
-        rgba(20, 20, 20, 0.4) 50%,
-        #141414 100%
-    );
-}
-.hero-info {
-    position: relative;
-    z-index: 2;
-    max-width: 550px;
-}
-.hero-movie-title {
-    font-size: 3rem;
-    font-weight: 900;
-    color: #fff;
-    margin-bottom: 12px;
-    text-shadow: 2px 2px 8px rgba(0,0,0,0.6);
-}
-.hero-movie-meta {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    color: #ddd;
-    font-size: 0.95rem;
-    margin-bottom: 12px;
-}
-.match {
-    color: #46d369;
-    font-weight: 700;
-}
-.hero-movie-summary {
-    color: #ddd;
-    font-size: 1rem;
-    line-height: 1.5;
-    margin-bottom: 24px;
-    text-shadow: 1px 1px 4px rgba(0,0,0,0.5);
-}
-.hero-actions {
-    display: flex;
-    gap: 12px;
-}
-.btn-play {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: #fff;
-    color: #000;
-    border: none;
-    border-radius: 4px;
-    padding: 10px 28px;
-    font-size: 1.1rem;
-    font-weight: 700;
-    cursor: pointer;
-    transition: opacity 0.2s;
-}
+.hero-banner { position: relative; height: 80vh; min-height: 500px; display: flex; align-items: flex-end; padding: 0 4% 8%; }
+.hero-backdrop { position: absolute; inset: 0; background-size: cover; background-position: center top; filter: brightness(0.5); }
+.hero-gradient { position: absolute; inset: 0; background: linear-gradient(to bottom, transparent 0%, rgba(20,20,20,0.4) 50%, #141414 100%); }
+.hero-info { position: relative; z-index: 2; max-width: 550px; }
+.hero-movie-title { font-size: 3rem; font-weight: 900; color: #fff; margin-bottom: 12px; text-shadow: 2px 2px 8px rgba(0,0,0,0.6); }
+.hero-movie-meta { display: flex; gap: 12px; align-items: center; color: #ddd; font-size: 0.95rem; margin-bottom: 12px; }
+.match { color: #46d369; font-weight: 700; }
+.hero-movie-summary { color: #ddd; font-size: 1rem; line-height: 1.5; margin-bottom: 24px; text-shadow: 1px 1px 4px rgba(0,0,0,0.5); }
+.hero-actions { display: flex; gap: 12px; }
+.btn-play { display: inline-flex; align-items: center; gap: 8px; background: #fff; color: #000; border: none; border-radius: 4px; padding: 10px 28px; font-size: 1.1rem; font-weight: 700; cursor: pointer; transition: opacity 0.2s; }
 .btn-play:hover { opacity: 0.8; }
+.btn-info { display: inline-flex; align-items: center; gap: 8px; background: rgba(109,109,110,0.7); color: #fff; border: none; border-radius: 4px; padding: 10px 28px; font-size: 1.1rem; font-weight: 700; cursor: pointer; transition: background 0.2s; }
+.btn-info:hover { background: rgba(109,109,110,0.4); }
 
-.btn-info {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: rgba(109, 109, 110, 0.7);
-    color: #fff;
-    border: none;
-    border-radius: 4px;
-    padding: 10px 28px;
-    font-size: 1.1rem;
-    font-weight: 700;
-    cursor: pointer;
-    transition: background 0.2s;
-}
-.btn-info:hover { background: rgba(109, 109, 110, 0.4); }
-
-/* Category Rows */
-.browse-rows {
-    margin-top: -80px;
-    position: relative;
-    z-index: 3;
-}
-.category-row {
-    margin-bottom: 40px;
-    padding: 0 4%;
-}
-.row-title {
-    color: #e5e5e5;
-    font-size: 1.3rem;
-    font-weight: 700;
-    margin-bottom: 12px;
-}
-.row-container {
-    position: relative;
-}
-.row-movies {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    scroll-behavior: smooth;
-    padding: 8px 0 24px;
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-}
+.browse-rows { margin-top: -80px; position: relative; z-index: 3; }
+.category-row { margin-bottom: 40px; padding: 0 4%; }
+.row-title { color: #e5e5e5; font-size: 1.3rem; font-weight: 700; margin-bottom: 12px; }
+.row-container { position: relative; }
+.row-movies { display: flex; gap: 8px; overflow-x: auto; scroll-behavior: smooth; padding: 8px 0 24px; -ms-overflow-style: none; scrollbar-width: none; }
 .row-movies::-webkit-scrollbar { display: none; }
 
-.scroll-btn {
-    position: absolute;
-    top: 0;
-    bottom: 24px;
-    width: 48px;
-    z-index: 10;
-    background: rgba(20, 20, 20, 0.7);
-    border: none;
-    color: #fff;
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.3s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
+.scroll-btn { position: absolute; top: 0; bottom: 24px; width: 48px; z-index: 10; background: rgba(20,20,20,0.7); border: none; color: #fff; cursor: pointer; opacity: 0; transition: opacity 0.3s; display: flex; align-items: center; justify-content: center; }
 .row-container:hover .scroll-btn { opacity: 1; }
 .scroll-left { left: 0; border-radius: 0 4px 4px 0; }
 .scroll-right { right: 0; border-radius: 4px 0 0 4px; }
 
-/* Movie Card */
-.movie-card {
-    flex: 0 0 200px;
-    height: 300px;
-    border-radius: 4px;
-    overflow: hidden;
-    cursor: pointer;
-    position: relative;
-    transition: transform 0.3s ease, z-index 0s 0.3s;
-}
-.movie-card:hover {
-    transform: scale(1.3);
-    z-index: 20;
-    transition: transform 0.3s ease, z-index 0s;
-}
-.movie-poster {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-.card-hover {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: linear-gradient(to top, #181818 0%, transparent 100%);
-    padding: 60px 12px 12px;
-    opacity: 0;
-    transition: opacity 0.3s;
-}
+.movie-card { flex: 0 0 200px; height: 300px; border-radius: 4px; overflow: hidden; cursor: pointer; position: relative; transition: transform 0.3s ease, z-index 0s 0.3s; }
+.movie-card:hover { transform: scale(1.3); z-index: 20; transition: transform 0.3s ease, z-index 0s; }
+.movie-poster { width: 100%; height: 100%; object-fit: cover; }
+.card-hover { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(to top, #181818 0%, transparent 100%); padding: 60px 12px 12px; opacity: 0; transition: opacity 0.3s; }
 .movie-card:hover .card-hover { opacity: 1; }
+.card-title { color: #fff; font-size: 0.85rem; font-weight: 700; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-meta { display: flex; gap: 8px; font-size: 0.75rem; color: #aaa; margin-bottom: 4px; align-items: center; }
+.card-match { color: #46d369; font-weight: 700; }
+.card-seeds { color: #46d369; display: flex; align-items: center; gap: 2px; }
+.card-provider { color: #888; text-transform: capitalize; }
+.card-genres { display: flex; gap: 6px; flex-wrap: wrap; }
+.card-genres span { font-size: 0.65rem; color: #ddd; border: 1px solid #444; padding: 1px 6px; border-radius: 2px; }
 
-.card-title {
-    color: #fff;
-    font-size: 0.85rem;
-    font-weight: 700;
-    margin-bottom: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.card-meta {
-    display: flex;
-    gap: 8px;
-    font-size: 0.75rem;
-    color: #aaa;
-    margin-bottom: 4px;
-    align-items: center;
-}
-.card-match {
-    color: #46d369;
-    font-weight: 700;
-}
-.card-seeds {
-    color: #46d369;
-    display: flex;
-    align-items: center;
-    gap: 2px;
-}
-.card-provider {
-    color: #888;
-    text-transform: capitalize;
-}
-.card-genres {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-}
-.card-genres span {
-    font-size: 0.65rem;
-    color: #ddd;
-    border: 1px solid #444;
-    padding: 1px 6px;
-    border-radius: 2px;
-}
+.loading-state { padding: 40px 4%; }
+.skeleton-row { margin-bottom: 40px; }
+.skeleton-title { width: 150px; height: 20px; background: #222; border-radius: 4px; margin-bottom: 12px; }
+.skeleton-cards { display: flex; gap: 8px; }
+.skeleton-card { flex: 0 0 200px; height: 300px; background: #222; border-radius: 4px; animation: pulse 1.5s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-/* Loading Skeleton */
-.loading-state {
-    padding: 40px 4%;
-}
-.skeleton-row {
-    margin-bottom: 40px;
-}
-.skeleton-title {
-    width: 150px;
-    height: 20px;
-    background: #222;
-    border-radius: 4px;
-    margin-bottom: 12px;
-}
-.skeleton-cards {
-    display: flex;
-    gap: 8px;
-}
-.skeleton-card {
-    flex: 0 0 200px;
-    height: 300px;
-    background: #222;
-    border-radius: 4px;
-    animation: pulse 1.5s ease-in-out infinite;
-}
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-}
-
-/* Empty State */
-.empty-state {
-    text-align: center;
-    padding: 120px 24px;
-    color: #666;
-}
-.empty-state p {
-    margin-top: 16px;
-    font-size: 1.1rem;
-}
-
-/* Grid layout for search results */
-.results-grid .movie-card {
-    flex: none;
-    width: 100%;
-    height: 300px;
-}
+.empty-state { text-align: center; padding: 120px 24px; color: #666; }
+.empty-state p { margin-top: 16px; font-size: 1.1rem; }
+.results-grid .movie-card { flex: none; width: 100%; height: 300px; }
 
 @media (max-width: 768px) {
     .hero-banner { height: 60vh; min-height: 400px; }

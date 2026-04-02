@@ -10,10 +10,11 @@
 
         <div class="navbar-right">
             <div class="search-box" :class="{ active: searchActive }">
-                <v-icon
+                <Search
                     class="search-icon"
+                    :size="20"
                     @click="toggleSearch"
-                >mdi-magnify</v-icon>
+                />
                 <input
                     v-if="searchActive"
                     ref="searchInput"
@@ -29,8 +30,11 @@
 </template>
 
 <script>
+import { Search } from 'lucide-vue-next';
+
 export default {
     name: 'AppHeader',
+    components: { Search },
     data() {
         return {
             isScrolled: false,
@@ -127,7 +131,6 @@ export default {
 .search-icon {
     color: #fff;
     cursor: pointer;
-    font-size: 22px;
 }
 .search-input {
     background: transparent;
