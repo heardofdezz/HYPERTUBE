@@ -9,9 +9,6 @@ module.exports = {
     db: {
         uri: process.env.MONGODB_URI || ''
     },
-    authentification: {
-        jwtSecret: process.env.JWT_SECRET || ''
-    },
     email: {
         user: process.env.EMAIL_USER || '',
         password: process.env.EMAIL_PASSWORD || ''

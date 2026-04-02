@@ -5,20 +5,15 @@
             <div class="hero-overlay"></div>
             <div class="hero-content">
                 <h1 class="hero-title">Unlimited movies, TV shows, and more</h1>
-                <p class="hero-subtitle">Watch anywhere. Stream anytime.</p>
-                <p class="hero-cta-text">Ready to watch? Enter your email to create or restart your membership.</p>
+                <p class="hero-subtitle">Watch anywhere. Stream anytime. Completely free.</p>
                 <div class="hero-actions">
-                    <router-link :to="{ name: 'Register' }">
+                    <router-link :to="{ name: 'Browse' }">
                         <button class="btn-primary btn-large">
-                            Get Started
+                            Start Watching
                             <v-icon size="24" class="btn-icon">mdi-chevron-right</v-icon>
                         </button>
                     </router-link>
                 </div>
-                <p class="hero-signin">
-                    Already have an account?
-                    <router-link to="/login" class="signin-link">Sign in</router-link>
-                </p>
             </div>
         </div>
 
@@ -125,30 +120,12 @@ export default {
     font-size: 1.5rem;
     color: #fff;
     font-weight: 400;
-    margin-bottom: 20px;
+    margin-bottom: 28px;
 }
-.hero-cta-text {
-    font-size: 1.15rem;
-    color: #fff;
-    margin-bottom: 24px;
-}
+
 .hero-actions {
     display: flex;
     justify-content: center;
-    gap: 12px;
-}
-.hero-signin {
-    margin-top: 20px;
-    color: #999;
-    font-size: 1rem;
-}
-.signin-link {
-    color: #fff;
-    font-weight: 600;
-    margin-left: 4px;
-}
-.signin-link:hover {
-    text-decoration: underline;
 }
 
 /* Buttons */
@@ -156,8 +133,8 @@ export default {
     background: #E50914;
     color: #fff;
     border: none;
-    padding: 14px 32px;
-    font-size: 1.3rem;
+    padding: 16px 40px;
+    font-size: 1.5rem;
     font-weight: 600;
     border-radius: 4px;
     cursor: pointer;
@@ -168,10 +145,6 @@ export default {
 }
 .btn-primary:hover {
     background: #f40612;
-}
-.btn-large {
-    padding: 16px 40px;
-    font-size: 1.5rem;
 }
 
 /* Section Divider */

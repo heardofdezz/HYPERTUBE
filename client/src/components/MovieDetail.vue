@@ -52,7 +52,7 @@
             <!-- Comments Section -->
             <div class="comments-section">
                 <h2>Comments</h2>
-                <form @submit.prevent="addComment" class="comment-form" v-if="$store.state.user">
+                <form @submit.prevent="addComment" class="comment-form">
                     <input
                         v-model="newComment"
                         type="text"
@@ -67,7 +67,9 @@
                         :key="index"
                         class="comment-item"
                     >
-                        <div class="comment-avatar">{{ (comment.user || 'U').toString().charAt(0).toUpperCase() }}</div>
+                        <div class="comment-avatar">
+                            <v-icon size="18" color="#fff">mdi-account</v-icon>
+                        </div>
                         <div class="comment-body">
                             <p class="comment-content">{{ comment.content }}</p>
                         </div>
@@ -100,7 +102,7 @@ export default {
         async fetchMovie() {
             this.loading = true;
             try {
-                const response = await Api().get(`movies?limit=100`);
+                const response = await Api().get('movies?limit=100');
                 const movies = response.data || [];
                 this.movie = movies.find((m) => m._id === this.$route.params.id) || null;
             } catch (err) {
@@ -113,14 +115,10 @@ export default {
             if (!this.newComment.trim()) return;
             try {
                 await Api().post(`comment/${this.movie._id}`, {
-                    user: this.$store.state.user._id,
                     content: this.newComment,
                 });
                 this.movie.comments = this.movie.comments || [];
-                this.movie.comments.push({
-                    user: this.$store.state.user._id,
-                    content: this.newComment,
-                });
+                this.movie.comments.push({ content: this.newComment });
                 this.newComment = '';
             } catch (err) {
                 console.error('Failed to post comment:', err);
@@ -136,7 +134,6 @@ export default {
     min-height: 100vh;
 }
 
-/* Loading */
 .detail-loading {
     display: flex;
     justify-content: center;
@@ -153,7 +150,6 @@ export default {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Hero */
 .detail-hero {
     position: relative;
     height: 70vh;
@@ -231,35 +227,27 @@ export default {
 }
 .btn-play-large:hover { opacity: 0.8; }
 
-/* Body */
 .detail-body {
     display: flex;
     gap: 40px;
     padding: 40px 4%;
     max-width: 1200px;
 }
-.detail-main {
-    flex: 2;
-}
+.detail-main { flex: 2; }
 .detail-summary {
     color: #ddd;
     font-size: 1.05rem;
     line-height: 1.6;
 }
-.detail-sidebar {
-    flex: 1;
-}
+.detail-sidebar { flex: 1; }
 .detail-sidebar p {
     color: #999;
     font-size: 0.9rem;
     margin-bottom: 10px;
     line-height: 1.5;
 }
-.label {
-    color: #777;
-}
+.label { color: #777; }
 
-/* Comments */
 .comments-section {
     padding: 40px 4%;
     max-width: 1200px;
@@ -310,13 +298,10 @@ export default {
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: #E50914;
-    color: #fff;
+    background: #333;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 700;
-    font-size: 0.8rem;
     flex-shrink: 0;
 }
 .comment-content {
