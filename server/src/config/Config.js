@@ -1,18 +1,27 @@
 /// Configuration file for the database, ENV, PORT, & ETC..
 
+if (!process.env.MONGODB_URI) {
+    console.warn('Warning: MONGODB_URI not set. Copy server/.env.example to server/.env and fill in your values.');
+}
+
 module.exports = {
     port: process.env.PORT || 8081,
     db: {
-        database: process.env.DB_NAME || 'test',
-        user: process.env.DB_USER || 'maloua-h',
-        password: process.env.DB_PW || 'hypertube42',
+        uri: process.env.MONGODB_URI || ''
     },
-    //Token auth using jsonwebtoken
     authentification: {
-        jwtSecret: process.env.JWT_SECRET || 'secret'
+        jwtSecret: process.env.JWT_SECRET || ''
     },
     email: {
-        user: '',
-        password: ''
+        user: process.env.EMAIL_USER || '',
+        password: process.env.EMAIL_PASSWORD || ''
+    },
+    imdb: {
+        apiKey: process.env.IMDB_API_KEY || ''
+    },
+    opensubtitles: {
+        useragent: process.env.OPENSUBTITLES_USERAGENT || 'TemporaryUserAgent',
+        username: process.env.OPENSUBTITLES_USERNAME || '',
+        password: process.env.OPENSUBTITLES_PASSWORD || ''
     }
 }

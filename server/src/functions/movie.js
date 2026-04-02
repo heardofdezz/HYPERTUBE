@@ -1,3 +1,4 @@
+const fs = require('fs');
 const pump = require('pump');
 
 const streamFile = (res, file, start, end, mimeType) => {

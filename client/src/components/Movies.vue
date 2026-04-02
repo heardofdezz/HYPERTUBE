@@ -17,27 +17,23 @@
 </template>
 
 <script>
-import MoviesService  from '@/services/UsersService';
+import MoviesService from '@/services/MoviesService';
 
 export default {
   
-  data(){
+  data() {
     return {
       movies: []
     }
-    console.log('Yooooooooo')
   },
-  methods:{
+  methods: {
     async MoviesIndex() {
-      const response = await MoviesService.MoviesIndex().then((result) => {
-          
-          this.movies = response.data[0]
-          console.log(response.data[0])
-          console.log('Yooooooooo')
-          console.log(response)
-      }).catch((err) => {
-        console.log(err)
-      });
+      try {
+        const response = await MoviesService.MoviesIndex();
+        this.movies = response.data;
+      } catch (err) {
+        console.error(err);
+      }
     }
   }
 }

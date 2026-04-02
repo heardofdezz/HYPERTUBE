@@ -12,6 +12,13 @@ server/test/unit/coverage/
 server/test/e2e9/reports/
 selenium-debug.log
 
+# Environment files
+.env
+.env.local
+.env.production
+server/.env
+client/.env
+
 # Editor directories and files
 .idea
 .vscode

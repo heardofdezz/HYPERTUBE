@@ -1,9 +1,10 @@
+require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const morgan = require('morgan');
 const mongoose = require('mongoose');
-const  Config = require('./config/Config')
+const Config = require('./config/Config');
 const app = express();
 const importMovies = require('./config/setup');
 const movieRouter = require('./routers/movie');
@@ -11,30 +12,31 @@ const commentRouter = require('./routers/comment');
 
 app.use(morgan('combined'));
 app.use(bodyParser.json());
-app.use(cors());
 
+// CORS: restrict to known origins
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:8080').split(',');
+app.use(cors({
+    origin: function (origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true
+}));
 
 // Application routes
-require('./routes')(app)
+require('./routes')(app);
 
 // Connecting to Mongo Database when connected then launching back-end Server
-mongoose.connect('mongodb+srv://hypertube:' +
-Config.db.password +
-'@cluster0-ybiyr.mongodb.net/test?retryWrites=true&w=majority',
-{
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-}).then((serverlaunch) => {
-
+mongoose.connect(Config.db.uri).then(() => {
     //importMovies();
     app.use(movieRouter);
     app.use(commentRouter);
-    app.listen(Config.port, () =>  {
-        console.log(`listening server side on ${Config.port} Connected to Mongo/Mongoose Database`)
-    })
+    app.listen(Config.port, () => {
+        console.log(`listening server side on ${Config.port} Connected to Mongo/Mongoose Database`);
+    });
 }).catch((err) => {
-    console.log(err)
+    console.log(err);
 });
-
-/// Connect to app routes
-

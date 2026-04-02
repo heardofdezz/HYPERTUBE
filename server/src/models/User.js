@@ -5,9 +5,6 @@ const bcrypt = require('bcrypt')
 const saltRounds = 10
 
 
-mongoose.set('useCreateIndex', true);
-
-
 const userSchema = mongoose.Schema({ 
     _id: mongoose.Types.ObjectId,
     email: { type: String, index: true, unique: true },

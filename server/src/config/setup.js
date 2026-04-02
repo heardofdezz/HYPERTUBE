@@ -1,10 +1,11 @@
-const request = require('request');
+const axios = require('axios');
 const Movie = require('../models/Movie');
 const { asyncForEach } = require('../functions/back');
 const imdb = require('imdb-api');
+const Config = require('./Config');
 
 const getImdbData = async (movie) => {
-    return imdb.get(movie.imdb_code ? {id: movie.imdb_code} : {name: movie.title}, { apiKey: '28b91dfb' }).then((data) => {
+    return imdb.get(movie.imdb_code ? { id: movie.imdb_code } : { name: movie.title }, { apiKey: Config.imdb.apiKey }).then((data) => {
         if (!data) {
             throw 'There is not imdbcode for ' + movie.title;
         }
@@ -28,7 +29,7 @@ const getImdbData = async (movie) => {
     })
         .then(async (movie) => {
             await movie.save();
-            console.log('\x1b[32m', movie.provider.toUpperCase(), ': Movie added!' ,'\x1b[0m');
+            console.log('\x1b[32m', movie.provider.toUpperCase(), ': Movie added!', '\x1b[0m');
             return Promise.resolve();
         })
         .catch((e) => {
@@ -40,12 +41,12 @@ const saveEztv = async (data) => {
     try {
         const imdb_code = 'tt' + data.imdb_id;
         const magnet = data.magnet_url;
-        const seeds = data.seeds ? data.seeds: 0;
+        const seeds = data.seeds ? data.seeds : 0;
 
         if (!imdb_code || !magnet) {
             return;
         }
-        const findMovie = await Movie.findOne({provider: 'eztv', imdb_code: imdb_code});
+        const findMovie = await Movie.findOne({ provider: 'eztv', imdb_code: imdb_code });
         if (!!findMovie) {
             if (findMovie.magnet.every((elem) => elem.magnet !== magnet)) {
                 findMovie.magnet.push({
@@ -53,12 +54,12 @@ const saveEztv = async (data) => {
                     seeds
                 });
                 await findMovie.save();
-                console.log('\x1b[32m', 'EZTV: Magnet successfully added to the movie ', findMovie.title , '\x1b[0m')
+                console.log('\x1b[32m', 'EZTV: Magnet successfully added to the movie ', findMovie.title, '\x1b[0m')
             } else {
-                console.log('\x1b[34m', 'EZTV: Movie already added.' , '\x1b[0m');
+                console.log('\x1b[34m', 'EZTV: Movie already added.', '\x1b[0m');
             }
         } else {
-            const movie = new Movie ({
+            const movie = new Movie({
                 provider: 'eztv',
                 imdb_code,
                 magnet: [{
@@ -76,12 +77,11 @@ const saveEztv = async (data) => {
     }
 }
 
-
 const saveYts = async (data) => {
     if (!data.torrents) {
         return;
     }
-    const findMovie = await Movie.findOne({provider: 'yts', imdb_code: data.imdb_code});
+    const findMovie = await Movie.findOne({ provider: 'yts', imdb_code: data.imdb_code });
     if (!findMovie) {
         const movie = new Movie({
             provider: 'yts',
@@ -98,67 +98,46 @@ const saveYts = async (data) => {
             console.error('\x1b[31m', 'YTS Error: ', e, '\x1b[0m');
         }
     } else {
-        console.log('\x1b[34m', 'YTS: Movie already added.' , '\x1b[0m')
+        console.log('\x1b[34m', 'YTS: Movie already added.', '\x1b[0m')
     }
 }
 
-const downloadMovieData = async(page, provider) => {
-    const url = provider === 'yts' ? 'https://ytss.unblocked.is/api/v2/list_movies.json?limit=100&page=' : 'https://eztv1.unblocked.is/api/get-torrents?limit=100&page=';
+const downloadMovieData = async (page, provider) => {
+    const url = provider === 'yts'
+        ? 'https://ytss.unblocked.is/api/v2/list_movies.json?limit=100&page='
+        : 'https://eztv1.unblocked.is/api/get-torrents?limit=100&page=';
 
-    return request(url + page, async (err, res, body) => {
-        try  {
-        if (err || !res) {
-            console.error(err ? err : 'No results in page ' + page);
-        } else if (res.statusCode !== 200) {
-            console.error('Request status ' + res.statusCode + ' for page ' + page);
-        } else {
-            try {
-                body = JSON.parse(body);
+    try {
+        const response = await axios.get(url + page);
+        const body = response.data;
 
-                if (provider === 'yts' ? !body.data : !body.torrents) {
-                    return Promise.reject();
-                }
+        if (provider === 'yts' ? !body.data : !body.torrents) {
+            return;
+        }
 
-                const movies = provider === 'yts' ? body.data.movies : body.torrents;
+        const movies = provider === 'yts' ? body.data.movies : body.torrents;
 
-                if (!movies) {
-                    return Promise.resolve();
-                }
+        if (!movies) {
+            return;
+        }
 
-                try {
-                    await asyncForEach(movies, async(movie) => {
-                        try {
-                            if (provider === 'yts') {
-                                await saveYts(movie);
-                            } else {
-                                await saveEztv(movie);
-                            }
-                        } catch(e) {
-                            return Promise.reject(e);
-                        }
-                    });
-                } catch (e) {
-                    throw new Error(e);
-                }
-
-            } catch (e) {
-                throw new Error(e);
+        await asyncForEach(movies, async (movie) => {
+            if (provider === 'yts') {
+                await saveYts(movie);
+            } else {
+                await saveEztv(movie);
             }
-        }
-        try {
-            await downloadMovieData(page + 1, provider);
-        } catch(e) {
-            throw new Error(e);
-        }
-        } catch (e) {
-            console.error('\x1b[31m', 'An error occured in provider ' + provider + ' :\n' + e, '\x1b[0m')
-        }
-    });
+        });
+
+        await downloadMovieData(page + 1, provider);
+    } catch (e) {
+        console.error('\x1b[31m', 'An error occured in provider ' + provider + ' :\n' + e, '\x1b[0m');
+    }
 }
 
-const importMovies = async() => {
+const importMovies = async () => {
     try {
-        const providers = [ 'yts', 'eztv' ];
+        const providers = ['yts', 'eztv'];
 
         providers.forEach((provider) => {
             downloadMovieData(1, provider).then(() => {
@@ -167,8 +146,7 @@ const importMovies = async() => {
                 console.error('\x1b[31m', 'An error occured in provider ' + provider + ' :\n' + e, '\x1b[0m');
             });
         });
-        /*Movie.deleteMany({provider: 'eztv'}).then(() => console.log('ok')).catch((e) => console.log(e));*/
-    } catch(e) {
+    } catch (e) {
         console.log(e);
     }
 };

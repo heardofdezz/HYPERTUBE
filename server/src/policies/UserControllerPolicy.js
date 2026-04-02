@@ -1,68 +1,64 @@
-// Schema validator  checking data types and regex :)
-const Joi = require('joi')
+// Schema validator checking data types and regex
+const Joi = require('joi');
 
 module.exports = {
-     register (req, res, next){
-        const schema = {
-            email: Joi.string().email({ minDomainAtoms: 2 }).required(),
+    register(req, res, next) {
+        const schema = Joi.object({
+            email: Joi.string().email().required(),
             username: Joi.string().required(),
             lastname: Joi.string().required(),
             firstname: Joi.string().required(),
-            password: Joi.string().required().regex(new RegExp('^[a-zA-Z0-9]{6,32}$')),
+            password: Joi.string().required().min(8).max(64)
+                .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"|,.<>/?]).{8,64}$/),
             created: Joi.date(),
-        }
-        const{error, value } =  Joi.validate(req.body, schema)        
-        if(error){
-            console.log(error)
+        });
+        const { error } = schema.validate(req.body);
+        if (error) {
             switch (error.details[0].context.key) {
                 case 'email':
                     res.status(400).send({
-                        error:"Email isn't valid"
-                    })
-                    break
+                        error: "Email isn't valid"
+                    });
+                    break;
                 case 'password':
                     res.status(400).send({
-                        error: `The password failed to match the follwoing rules: <br>
-                        1. Must contain ONLY the following characters: lower case, upper case, numerics. <br>
-                        2. Its must be between 6 to 32 characters `
-                    })
-                    break
+                        error: 'Password must be 8-64 characters with at least one uppercase, one lowercase, one number, and one special character.'
+                    });
+                    break;
                 default:
                     res.status(400).send({
                         error: 'Invalid Sign Up Information.'
-                    })
+                    });
             }
-        }else
-        next()
-    },
-    login (req, res, next){
-        const schema = {
-            email: Joi.string().email(),
-            password: Joi.string().regex(
-                new RegExp('^[a-zA-Z0-9]{6,32}$')
-            )
+        } else {
+            next();
         }
-        const{error, value} = Joi.validate(req.body, schema)
-        if(error){
+    },
+    login(req, res, next) {
+        const schema = Joi.object({
+            email: Joi.string().email(),
+            password: Joi.string()
+        });
+        const { error } = schema.validate(req.body);
+        if (error) {
             switch (error.details[0].context.key) {
                 case 'email':
                     res.status(400).send({
-                        error: 'Email isnt valid'
-                    })
-                    break
+                        error: 'Email is not valid'
+                    });
+                    break;
                 case 'password':
                     res.status(400).send({
-                        error: `The Password failed to match the following rules:
-                        <br>
-                        1. Must contain ONLY the following characters: lower case, upper case, numerics.
-                        <br>
-                        2. It must be between 6 to 32 characters `
-                    })
+                        error: 'Invalid password format'
+                    });
+                    break;
                 default:
                     res.status(400).send({
                         error: 'Invalid information'
-                    })
+                    });
             }
+        } else {
+            next();
         }
     }
 }
