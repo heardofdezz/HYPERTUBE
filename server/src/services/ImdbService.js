@@ -1,8 +1,33 @@
 const imdb = require('imdb-api');
 const Config = require('../config/Config');
 
+// LRU cache
 const cache = new Map();
 const MAX_CACHE_SIZE = 1000;
+
+// Daily rate limiter — OMDB free tier: 1,000 requests/day
+const DAILY_LIMIT = 950; // Leave 50 buffer for user-triggered searches
+let requestCount = 0;
+let lastResetDate = new Date().toDateString();
+
+function checkAndResetDaily() {
+    const today = new Date().toDateString();
+    if (today !== lastResetDate) {
+        requestCount = 0;
+        lastResetDate = today;
+        console.log('OMDB daily counter reset');
+    }
+}
+
+function isQuotaAvailable() {
+    checkAndResetDaily();
+    return requestCount < DAILY_LIMIT;
+}
+
+function getQuotaRemaining() {
+    checkAndResetDaily();
+    return Math.max(0, DAILY_LIMIT - requestCount);
+}
 
 function cacheSet(key, value) {
     if (cache.size >= MAX_CACHE_SIZE) {
@@ -20,20 +45,13 @@ function cacheGet(key) {
     return value;
 }
 
-// Extract a clean searchable name from a torrent title
 function extractSearchName(raw) {
     let name = raw;
-
-    // Remove season/episode markers and everything after
     name = name.replace(/\s*S\d{1,2}(E\d{1,2})?.*$/i, '');
-
-    // Remove year and everything after it (but capture the year)
     const yearMatch = name.match(/^(.+?)\s+((?:19|20)\d{2})\b/);
     if (yearMatch) {
         name = yearMatch[1];
     }
-
-    // Remove common noise words
     name = name
         .replace(/\b(Complete|Season|Series|COMPLETE|Full|Episodes?)\b/gi, '')
         .replace(/\b(English|Dubbed|Subbed|DUAL|MULTi)\b/gi, '')
@@ -41,7 +59,6 @@ function extractSearchName(raw) {
         .replace(/[^a-zA-Z0-9\s:'-]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
-
     return name;
 }
 
@@ -51,7 +68,10 @@ async function enrichByImdbCode(imdbCode) {
     const cached = cacheGet(imdbCode);
     if (cached) return cached;
 
+    if (!isQuotaAvailable()) return null;
+
     try {
+        requestCount++;
         const data = await imdb.get({ id: imdbCode }, { apiKey: Config.imdb.apiKey });
         if (!data) return null;
 
@@ -60,7 +80,8 @@ async function enrichByImdbCode(imdbCode) {
         return metadata;
     } catch (e) {
         if (e.statusCode === 401 || e.statusCode === 429) {
-            console.warn('IMDB API rate limit reached');
+            console.warn(`OMDB rate limit hit (${requestCount}/${DAILY_LIMIT} used today)`);
+            requestCount = DAILY_LIMIT; // Stop further attempts
         }
         return null;
     }
@@ -76,7 +97,10 @@ async function enrichByTitle(rawTitle) {
     const cached = cacheGet(cacheKey);
     if (cached) return cached;
 
+    if (!isQuotaAvailable()) return null;
+
     try {
+        requestCount++;
         const data = await imdb.get({ name: searchName }, { apiKey: Config.imdb.apiKey });
         if (!data) return null;
 
@@ -86,7 +110,8 @@ async function enrichByTitle(rawTitle) {
         return metadata;
     } catch (e) {
         if (e.statusCode === 401 || e.statusCode === 429) {
-            console.warn('IMDB API rate limit reached');
+            console.warn(`OMDB rate limit hit (${requestCount}/${DAILY_LIMIT} used today)`);
+            requestCount = DAILY_LIMIT;
         }
         return null;
     }
@@ -109,4 +134,4 @@ function extractMetadata(data, imdbCode) {
     };
 }
 
-module.exports = { enrichByImdbCode, enrichByTitle, extractSearchName };
+module.exports = { enrichByImdbCode, enrichByTitle, extractSearchName, isQuotaAvailable, getQuotaRemaining };

@@ -2,7 +2,6 @@ const TorrentSearchService = require('../services/TorrentSearchService');
 const ImdbService = require('../services/ImdbService');
 const Movie = require('../models/Movie');
 
-// Rotating query pools — seeder cycles through these endlessly
 const MOVIE_QUERIES = [
     'action movies 2025', 'action movies 2024', 'action movies 2023',
     'comedy movies 2025', 'comedy movies 2024', 'drama 2025', 'drama 2024',
@@ -68,13 +67,17 @@ async function processTorrent(torrent) {
     if (!title || title.length < 2) return false;
 
     try {
-        const metadata = await ImdbService.enrichByTitle(title);
+        // Only call OMDB if we have quota left
+        let metadata = null;
+        if (ImdbService.isQuotaAvailable()) {
+            metadata = await ImdbService.enrichByTitle(title);
+        }
 
         if (metadata && metadata.imdb_code) {
             const existing = await Movie.findOne({ imdb_code: metadata.imdb_code });
             if (existing) {
                 await addMagnetToMovie(existing, torrent.magnet, torrent.seeds);
-                return false; // Not new
+                return false;
             }
             await Movie.create({
                 ...metadata,
@@ -83,8 +86,9 @@ async function processTorrent(torrent) {
                 magnet: torrent.magnet ? [{ magnet: torrent.magnet, seeds: torrent.seeds }] : [],
                 lastSearched: new Date(),
             });
-            return true; // New
+            return true;
         } else {
+            // No OMDB match or quota exhausted — save with torrent title only
             const existing = await Movie.findOne({ title });
             if (existing) {
                 await addMagnetToMovie(existing, torrent.magnet, torrent.seeds);
@@ -119,6 +123,16 @@ const startContinuousSeeding = async () => {
             const query = ALL_QUERIES[queryIndex % ALL_QUERIES.length];
             queryIndex++;
 
+            const quota = ImdbService.getQuotaRemaining();
+
+            // If OMDB quota is exhausted, slow way down — just collect torrents without metadata
+            if (quota === 0 && queryIndex > ALL_QUERIES.length) {
+                // Already did one full pass and quota is gone — wait 10 min before continuing
+                console.log('Seeder: OMDB quota exhausted, pausing for 10 minutes...');
+                await new Promise((r) => setTimeout(r, 10 * 60 * 1000));
+                continue;
+            }
+
             try {
                 const torrents = await TorrentSearchService.search(query, 'All', 15);
                 let newInBatch = 0;
@@ -126,18 +140,20 @@ const startContinuousSeeding = async () => {
                 for (const torrent of torrents) {
                     const isNew = await processTorrent(torrent);
                     if (isNew) newInBatch++;
-                    await new Promise((r) => setTimeout(r, 400));
+
+                    // Pace OMDB calls: slower when quota is low
+                    const delay = quota > 500 ? 400 : quota > 200 ? 800 : 1500;
+                    await new Promise((r) => setTimeout(r, delay));
                 }
 
                 if (newInBatch > 0) {
                     totalNewAllTime += newInBatch;
-                    console.log(`Seeder: +${newInBatch} new from "${query}" (${totalNewAllTime} total new)`);
+                    console.log(`Seeder: +${newInBatch} new from "${query}" (${totalNewAllTime} total | OMDB: ${ImdbService.getQuotaRemaining()} left)`);
                 }
             } catch (e) {
-                // Provider down or timeout — just move on
+                // Provider down or timeout
             }
 
-            // Pause between queries: shorter if we're still on first pass, longer after
             const isFirstPass = queryIndex <= ALL_QUERIES.length;
             const delay = isFirstPass ? 3000 : 30000;
             await new Promise((r) => setTimeout(r, delay));
@@ -147,7 +163,6 @@ const startContinuousSeeding = async () => {
     runCycle().catch((e) => {
         console.error('Seeder crashed:', e.message);
         seedingActive = false;
-        // Restart after 60s
         setTimeout(startContinuousSeeding, 60000);
     });
 };
