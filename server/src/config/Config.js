@@ -1,13 +1,10 @@
 /// Configuration file for the database, ENV, PORT, & ETC..
 
-if (!process.env.MONGODB_URI) {
-    console.warn('Warning: MONGODB_URI not set. Copy server/.env.example to server/.env and fill in your values.');
-}
 
 module.exports = {
     port: process.env.PORT || 8081,
     db: {
-        uri: process.env.MONGODB_URI || ''
+        uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/hypertube'
     },
     email: {
         user: process.env.EMAIL_USER || '',
