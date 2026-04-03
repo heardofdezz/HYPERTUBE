@@ -91,6 +91,9 @@ async function ingestTorrent(torrent) {
     const isSeries = (metadata && metadata.contentType === 'series') || isLikelyTVContent(rawTitle);
     const episodeInfo = isSeries ? parseEpisodeInfo(rawTitle) : null;
 
+    // For series, use the clean show name (from OMDB or extracted), not the torrent filename
+    const docTitle = metadata?.title || (isSeries ? ImdbService.extractSearchName(rawTitle) : title);
+
     if (metadata && metadata.imdb_code) {
         // Check if already exists
         const existing = await Movie.findOne({ imdb_code: metadata.imdb_code });
@@ -132,8 +135,8 @@ async function ingestTorrent(torrent) {
         }
     }
 
-    // No OMDB match — save by title
-    const existing = await Movie.findOne({ title });
+    // No OMDB match — save by clean show/movie name
+    const existing = await Movie.findOne({ title: docTitle });
     if (existing) {
         if (isSeries && episodeInfo) {
             if (existing.contentType !== 'series') existing.contentType = 'series';
@@ -151,7 +154,7 @@ async function ingestTorrent(torrent) {
 
     // Create new without metadata
     const doc = {
-        title,
+        title: docTitle,
         contentType: isSeries ? 'series' : 'movie',
         provider: torrent.provider,
         seeds: torrent.seeds,
