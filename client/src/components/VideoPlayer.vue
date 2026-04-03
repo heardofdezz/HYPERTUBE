@@ -24,7 +24,7 @@
                         <span class="progress-percent">{{ Math.round(displayProgress * 100) }}%</span>
                     </div>
                 </div>
-                <h2 class="loading-title">{{ movie?.title || 'Loading...' }}</h2>
+                <h2 class="loading-title">{{ movie?.title || 'Loading...' }}{{ episodeLabel }}</h2>
                 <p class="loading-status">{{ statusMessage }}</p>
                 <div class="loading-stats" v-if="stats.peers > 0">
                     <span><Wifi :size="14" /> {{ stats.peers }} peers</span>
@@ -106,6 +106,13 @@ export default {
         displayProgress() {
             return this.stats.progress || 0;
         },
+        episodeLabel() {
+            const s = this.$route.query.season;
+            const e = this.$route.query.episode;
+            if (s && e) return ` - S${s}E${e}`;
+            if (s) return ` - Season ${s}`;
+            return '';
+        },
         statusMessage() {
             switch (this.stats.status) {
                 case 'connecting': return 'Finding peers...';
@@ -140,15 +147,23 @@ export default {
             this.pollStatus();
             this.pollTimer = setInterval(() => this.pollStatus(), 1500);
         },
+        buildQueryString() {
+            const params = new URLSearchParams();
+            if (this.$route.query.season) params.set('season', this.$route.query.season);
+            if (this.$route.query.episode) params.set('episode', this.$route.query.episode);
+            const qs = params.toString();
+            return qs ? `?${qs}` : '';
+        },
         async pollStatus() {
             try {
-                const response = await Api().get(`prepare/${this.$route.params.id}`);
+                const qs = this.buildQueryString();
+                const response = await Api().get(`prepare/${this.$route.params.id}${qs}`);
                 this.stats = response.data;
 
                 if (this.stats.status === 'ready') {
                     clearInterval(this.pollTimer);
                     this.pollTimer = null;
-                    this.streamUrl = `${this.apiBase}/stream/${this.$route.params.id}`;
+                    this.streamUrl = `${this.apiBase}/stream/${this.$route.params.id}${qs}`;
                     this.ready = true;
                 } else if (this.stats.status === 'error') {
                     clearInterval(this.pollTimer);

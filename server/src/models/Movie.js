@@ -9,7 +9,29 @@ const commentSchema = new mongoose.Schema({
     timestamps: true
 });
 
+const magnetSchema = new mongoose.Schema({
+    magnet: { type: String },
+    seeds: { type: Number },
+    title: { type: String, trim: true },
+}, { _id: false });
+
+const episodeSchema = new mongoose.Schema({
+    episodeNumber: { type: Number, required: true },
+    magnet: [magnetSchema],
+}, { _id: false });
+
+const seasonSchema = new mongoose.Schema({
+    seasonNumber: { type: Number, required: true },
+    magnet: [magnetSchema],       // season-level magnets (complete season packs)
+    episodes: [episodeSchema],
+}, { _id: false });
+
 const movieSchema = new mongoose.Schema({
+    contentType: {
+        type: String,
+        enum: ['movie', 'series'],
+        default: 'movie'
+    },
     provider: {
         type: String,
         trim: true
@@ -44,6 +66,9 @@ const movieSchema = new mongoose.Schema({
         type: String,
         trim: true
     },
+    totalSeasons: {
+        type: Number
+    },
     genres: [
         {
             type: String,
@@ -63,16 +88,9 @@ const movieSchema = new mongoose.Schema({
         trim: true
     },
     torrent: [],
-    magnet: [
-        {
-            magnet: {
-                type: String
-            },
-            seeds: {
-                type: Number
-            }
-        }
-    ],
+    magnet: [magnetSchema],
+    seasons: [seasonSchema],
+    seriesMagnet: [magnetSchema],  // complete series packs
     filePath: {
         type: String,
         trim: true
@@ -100,6 +118,8 @@ const movieSchema = new mongoose.Schema({
 movieSchema.index({ title: 1, provider: 1 });
 movieSchema.index({ title: 'text' });
 movieSchema.index({ lastSearched: 1 });
+movieSchema.index({ contentType: 1 });
+movieSchema.index({ imdb_code: 1 });
 
 const Movie = mongoose.model('Movie', movieSchema);
 

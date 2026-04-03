@@ -37,17 +37,52 @@ function addTrackersToMagnet(magnet) {
     return magnet.includes('&tr=') ? magnet : magnet + trackerParams;
 }
 
-// Start or get a torrent session for a movie
-async function getOrCreateSession(movieId) {
-    if (sessions.has(movieId)) {
-        return sessions.get(movieId);
+// Find the best magnet for a movie/episode
+function findBestMagnet(movie, seasonNum, episodeNum) {
+    // Series with season/episode specified
+    if (movie.contentType === 'series' && seasonNum != null) {
+        const season = movie.seasons.find(s => s.seasonNumber === seasonNum);
+        if (season) {
+            if (episodeNum != null) {
+                const episode = season.episodes.find(e => e.episodeNumber === episodeNum);
+                if (episode && episode.magnet.length > 0) {
+                    return episode.magnet.sort((a, b) => (b.seeds || 0) - (a.seeds || 0))[0].magnet;
+                }
+            }
+            // Fall back to season pack
+            if (season.magnet.length > 0) {
+                return season.magnet.sort((a, b) => (b.seeds || 0) - (a.seeds || 0))[0].magnet;
+            }
+        }
+        // Fall back to series pack
+        if (movie.seriesMagnet && movie.seriesMagnet.length > 0) {
+            return movie.seriesMagnet.sort((a, b) => (b.seeds || 0) - (a.seeds || 0))[0].magnet;
+        }
+    }
+
+    // Fall back to flat magnet array (movies, or series without structured data)
+    const magnets = movie.magnet.filter(m => m.magnet);
+    if (magnets.length > 0) {
+        return magnets.sort((a, b) => (b.seeds || 0) - (a.seeds || 0))[0].magnet;
+    }
+    return null;
+}
+
+// Start or get a torrent session
+async function getOrCreateSession(movieId, seasonNum, episodeNum) {
+    const sessionKey = seasonNum != null
+        ? `${movieId}:S${seasonNum}E${episodeNum || 0}`
+        : movieId;
+
+    if (sessions.has(sessionKey)) {
+        return sessions.get(sessionKey);
     }
 
     const movie = await Movie.findById(movieId);
     if (!movie) throw new Error('Movie not found');
 
     // If already downloaded, return disk path
-    if (movie.isDownloaded && movie.filePath) {
+    if (movie.isDownloaded && movie.filePath && seasonNum == null) {
         try {
             const stat = fs.statSync(movie.filePath);
             const session = {
@@ -62,7 +97,7 @@ async function getOrCreateSession(movieId) {
                 progress: 1,
                 movie,
             };
-            sessions.set(movieId, session);
+            sessions.set(sessionKey, session);
             return session;
         } catch (e) {
             movie.isDownloaded = false;
@@ -71,10 +106,9 @@ async function getOrCreateSession(movieId) {
         }
     }
 
-    const magnets = movie.magnet.filter(m => m.magnet);
-    if (magnets.length === 0) throw new Error('No magnet links available');
+    const bestMagnet = findBestMagnet(movie, seasonNum, episodeNum);
+    if (!bestMagnet) throw new Error('No magnet links available for this content');
 
-    const bestMagnet = magnets.sort((a, b) => (b.seeds || 0) - (a.seeds || 0))[0].magnet;
     const magnetWithTrackers = addTrackersToMagnet(bestMagnet);
 
     const downloadPath = path.join(__dirname, '..', '..', 'downloads');
@@ -95,7 +129,7 @@ async function getOrCreateSession(movieId) {
         progress: 0,
         movie,
     };
-    sessions.set(movieId, session);
+    sessions.set(sessionKey, session);
 
     const engine = torrentStream(magnetWithTrackers, {
         path: downloadPath,
@@ -217,7 +251,9 @@ router.get('/categories', async (req, res) => {
 // Start preparing a stream (call before /stream to pre-buffer)
 router.get('/prepare/:id', async (req, res) => {
     try {
-        const session = await getOrCreateSession(req.params.id);
+        const seasonNum = req.query.season != null ? Number(req.query.season) : undefined;
+        const episodeNum = req.query.episode != null ? Number(req.query.episode) : undefined;
+        const session = await getOrCreateSession(req.params.id, seasonNum, episodeNum);
         res.json({
             status: session.status,
             progress: session.progress,
@@ -239,7 +275,9 @@ router.get('/prepare/:id', async (req, res) => {
 // Stream the video (only works once status is 'ready')
 router.get('/stream/:id', async (req, res) => {
     try {
-        const session = await getOrCreateSession(req.params.id);
+        const seasonNum = req.query.season != null ? Number(req.query.season) : undefined;
+        const episodeNum = req.query.episode != null ? Number(req.query.episode) : undefined;
+        const session = await getOrCreateSession(req.params.id, seasonNum, episodeNum);
 
         if (session.status === 'error') {
             return res.status(500).json({ error: session.error || 'Stream failed' });
@@ -270,7 +308,7 @@ router.get('/stream/:id', async (req, res) => {
     }
 });
 
-// Get movie info
+// Get movie/series info
 router.get('/movie/:id', async (req, res) => {
     try {
         const movie = await Movie.findById(req.params.id);
@@ -278,12 +316,35 @@ router.get('/movie/:id', async (req, res) => {
             return res.status(404).json({ error: 'Movie not found' });
         }
         const obj = movie.toObject();
-        obj.hasMagnet = obj.magnet && obj.magnet.length > 0;
+
+        // Indicate magnet availability
+        obj.hasMagnet = (obj.magnet && obj.magnet.length > 0) ||
+            (obj.seasons && obj.seasons.some(s => s.magnet.length > 0 || s.episodes.some(e => e.magnet.length > 0))) ||
+            (obj.seriesMagnet && obj.seriesMagnet.length > 0);
+
         obj.bestSeeds = obj.magnet && obj.magnet.length > 0
             ? Math.max(...obj.magnet.map(m => m.seeds || 0))
             : 0;
+
+        // For series, include seasons structure but strip raw magnet strings
+        if (obj.contentType === 'series' && obj.seasons) {
+            obj.seasons = obj.seasons.map(s => ({
+                seasonNumber: s.seasonNumber,
+                hasMagnet: s.magnet && s.magnet.length > 0,
+                episodes: (s.episodes || []).map(e => ({
+                    episodeNumber: e.episodeNumber,
+                    hasMagnet: e.magnet && e.magnet.length > 0,
+                    bestSeeds: e.magnet && e.magnet.length > 0
+                        ? Math.max(...e.magnet.map(m => m.seeds || 0))
+                        : 0,
+                })),
+            }));
+            obj.hasSeriesMagnet = obj.seriesMagnet && obj.seriesMagnet.length > 0;
+        }
+
         delete obj.magnet;
         delete obj.torrent;
+        delete obj.seriesMagnet;
         res.json(obj);
     } catch (e) {
         res.status(500).json({ error: 'Failed to fetch movie' });

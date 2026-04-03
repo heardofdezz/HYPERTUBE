@@ -25,6 +25,8 @@ module.exports = {
                 }
             }
 
+            const type = req.query ? req.query.type : undefined;
+
             let filters = query && query.length > 0
                 ? { title: { $regex: escapeRegex(query), $options: 'i' } }
                 : {};
@@ -34,6 +36,9 @@ module.exports = {
             filters = category
                 ? { ...filters, genres: { $all: [new RegExp('^' + category + '$', 'i')] } }
                 : filters;
+            if (type === 'movie' || type === 'series') {
+                filters.contentType = type;
+            }
 
             const movies = await Movie.find(filters, [], {
                 skip,
