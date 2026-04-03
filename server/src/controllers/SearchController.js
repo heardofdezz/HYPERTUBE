@@ -1,21 +1,7 @@
 const TorrentSearchService = require('../services/TorrentSearchService');
-const ImdbService = require('../services/ImdbService');
+const { ingestTorrent } = require('../services/TorrentIngestionService');
 const Movie = require('../models/Movie');
 const Config = require('../config/Config');
-
-function cleanTitle(raw) {
-    return raw
-        .split('/').pop()
-        .replace(/\.(mkv|avi|mp4|mov|torrent)$/i, '')
-        .replace(/\./g, ' ')
-        .replace(/\[.*?\]/g, '')
-        .replace(/\((\d{4})\)/g, ' $1 ')
-        .replace(/\([^)]*\)/g, '')
-        .replace(/\b(720p|1080p|2160p|4k|BluRay|BRRip|BrRip|WEBRip|WEB-DL|HDRip|DVDRip|x264|x265|HEVC|AAC|DTS|DDP5|TrueHD|Atmos|REMUX|PROPER|IMAX|10bit|HDR|HDR10|DV|YIFY|YTS|RARBG|GalaxyRG\w*|FraMeSToR)\b/gi, '')
-        .replace(/-\s*\w*$/, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
 
 module.exports = {
     async search(req, res) {
@@ -65,75 +51,20 @@ module.exports = {
                 return res.status(503).json({ error: 'Torrent search temporarily unavailable' });
             }
 
-            // Phase 3: Save results, dedup by imdb_code
+            // Phase 3: Ingest results (dedup by imdb_code, series-aware)
             const results = [];
             const seen = new Set();
 
             for (const torrent of torrents) {
-                const title = cleanTitle(torrent.title);
-                if (!title || title.length < 2) continue;
-
                 try {
-                    // Try IMDB enrichment to get imdb_code for dedup
-                    const metadata = await ImdbService.enrichByTitle(title);
-                    let movie;
+                    const result = await ingestTorrent(torrent);
+                    if (!result) continue;
 
-                    if (metadata && metadata.imdb_code) {
-                        if (seen.has(metadata.imdb_code)) {
-                            // Already handled in this batch — just add magnet
-                            const existing = await Movie.findOne({ imdb_code: metadata.imdb_code });
-                            if (existing && torrent.magnet && !existing.magnet.some(m => m.magnet === torrent.magnet)) {
-                                existing.magnet.push({ magnet: torrent.magnet, seeds: torrent.seeds });
-                                if (torrent.seeds > (existing.seeds || 0)) existing.seeds = torrent.seeds;
-                                await existing.save();
-                            }
-                            continue;
-                        }
-                        seen.add(metadata.imdb_code);
+                    const key = result.movie.imdb_code || result.movie._id.toString();
+                    if (seen.has(key)) continue;
+                    seen.add(key);
 
-                        const existing = await Movie.findOne({ imdb_code: metadata.imdb_code });
-                        if (existing) {
-                            if (torrent.magnet && !existing.magnet.some(m => m.magnet === torrent.magnet)) {
-                                existing.magnet.push({ magnet: torrent.magnet, seeds: torrent.seeds });
-                            }
-                            if (torrent.seeds > (existing.seeds || 0)) existing.seeds = torrent.seeds;
-                            existing.lastSearched = new Date();
-                            await existing.save();
-                            movie = existing;
-                        } else {
-                            movie = await Movie.create({
-                                ...metadata,
-                                provider: torrent.provider,
-                                seeds: torrent.seeds,
-                                magnet: torrent.magnet ? [{ magnet: torrent.magnet, seeds: torrent.seeds }] : [],
-                                lastSearched: new Date(),
-                            });
-                        }
-                    } else {
-                        // No IMDB match — save by title
-                        if (seen.has(title.toLowerCase())) continue;
-                        seen.add(title.toLowerCase());
-
-                        const existing = await Movie.findOne({ title });
-                        if (existing) {
-                            if (torrent.magnet && !existing.magnet.some(m => m.magnet === torrent.magnet)) {
-                                existing.magnet.push({ magnet: torrent.magnet, seeds: torrent.seeds });
-                            }
-                            existing.lastSearched = new Date();
-                            await existing.save();
-                            movie = existing;
-                        } else {
-                            movie = await Movie.create({
-                                title,
-                                provider: torrent.provider,
-                                seeds: torrent.seeds,
-                                magnet: torrent.magnet ? [{ magnet: torrent.magnet, seeds: torrent.seeds }] : [],
-                                lastSearched: new Date(),
-                            });
-                        }
-                    }
-
-                    const obj = movie.toObject();
+                    const obj = result.movie.toObject();
                     delete obj.torrent;
                     results.push(obj);
                 } catch (e) {

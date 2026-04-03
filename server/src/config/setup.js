@@ -1,6 +1,6 @@
 const TorrentSearchService = require('../services/TorrentSearchService');
 const ImdbService = require('../services/ImdbService');
-const Movie = require('../models/Movie');
+const { ingestTorrent } = require('../services/TorrentIngestionService');
 
 const MOVIE_QUERIES = [
     'action movies 2025', 'action movies 2024', 'action movies 2023',
@@ -36,78 +36,6 @@ const ANIME_QUERIES = [
 
 const ALL_QUERIES = [...MOVIE_QUERIES, ...TV_QUERIES, ...ANIME_QUERIES];
 
-function cleanTitle(raw) {
-    return raw
-        .split('/').pop()
-        .replace(/\.(mkv|avi|mp4|mov|torrent)$/i, '')
-        .replace(/\./g, ' ')
-        .replace(/\[.*?\]/g, '')
-        .replace(/\((\d{4})\)/g, ' $1 ')
-        .replace(/\([^)]*\)/g, '')
-        .replace(/\b(720p|1080p|2160p|4k|BluRay|BRRip|BrRip|WEBRip|WEB-DL|HDRip|DVDRip|x264|x265|HEVC|AAC|DTS|DDP5|TrueHD|Atmos|REMUX|PROPER|IMAX|10bit|HDR|HDR10|DV|YIFY|YTS|RARBG|GalaxyRG\w*|FraMeSToR)\b/gi, '')
-        .replace(/-\s*\w*$/, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-async function addMagnetToMovie(movie, magnet, seeds) {
-    if (!magnet) return;
-    if (!movie.magnet.some(m => m.magnet === magnet)) {
-        movie.magnet.push({ magnet, seeds });
-    }
-    if (seeds > (movie.seeds || 0)) {
-        movie.seeds = seeds;
-    }
-    movie.lastSearched = new Date();
-    await movie.save();
-}
-
-async function processTorrent(torrent) {
-    const title = cleanTitle(torrent.title);
-    if (!title || title.length < 2) return false;
-
-    try {
-        // Only call OMDB if we have quota left
-        let metadata = null;
-        if (ImdbService.isQuotaAvailable()) {
-            metadata = await ImdbService.enrichByTitle(title);
-        }
-
-        if (metadata && metadata.imdb_code) {
-            const existing = await Movie.findOne({ imdb_code: metadata.imdb_code });
-            if (existing) {
-                await addMagnetToMovie(existing, torrent.magnet, torrent.seeds);
-                return false;
-            }
-            await Movie.create({
-                ...metadata,
-                provider: torrent.provider,
-                seeds: torrent.seeds,
-                magnet: torrent.magnet ? [{ magnet: torrent.magnet, seeds: torrent.seeds }] : [],
-                lastSearched: new Date(),
-            });
-            return true;
-        } else {
-            // No OMDB match or quota exhausted — save with torrent title only
-            const existing = await Movie.findOne({ title });
-            if (existing) {
-                await addMagnetToMovie(existing, torrent.magnet, torrent.seeds);
-                return false;
-            }
-            await Movie.create({
-                title,
-                provider: torrent.provider,
-                seeds: torrent.seeds,
-                magnet: torrent.magnet ? [{ magnet: torrent.magnet, seeds: torrent.seeds }] : [],
-                lastSearched: new Date(),
-            });
-            return true;
-        }
-    } catch (e) {
-        return false;
-    }
-}
-
 let seedingActive = false;
 
 const startContinuousSeeding = async () => {
@@ -125,9 +53,7 @@ const startContinuousSeeding = async () => {
 
             const quota = ImdbService.getQuotaRemaining();
 
-            // If OMDB quota is exhausted, slow way down — just collect torrents without metadata
             if (quota === 0 && queryIndex > ALL_QUERIES.length) {
-                // Already did one full pass and quota is gone — wait 10 min before continuing
                 console.log('Seeder: OMDB quota exhausted, pausing for 10 minutes...');
                 await new Promise((r) => setTimeout(r, 10 * 60 * 1000));
                 continue;
@@ -138,10 +64,16 @@ const startContinuousSeeding = async () => {
                 let newInBatch = 0;
 
                 for (const torrent of torrents) {
-                    const isNew = await processTorrent(torrent);
-                    if (isNew) newInBatch++;
+                    try {
+                        const result = await ingestTorrent(torrent);
+                        if (result && result.isNew) {
+                            newInBatch++;
+                            console.log(`  Saved: ${result.movie.title} [${result.movie.contentType}]`);
+                        }
+                    } catch (e) {
+                        // Skip
+                    }
 
-                    // Pace OMDB calls: slower when quota is low
                     const delay = quota > 500 ? 400 : quota > 200 ? 800 : 1500;
                     await new Promise((r) => setTimeout(r, delay));
                 }

@@ -132,6 +132,7 @@
                                     <Film :size="28" color="#555" />
                                     <span>{{ movie.title }}</span>
                                 </div>
+                                <span v-if="movie.contentType === 'series'" class="series-badge">Series</span>
                                 <div class="card-hover">
                                     <h3 class="card-title">{{ movie.title }}</h3>
                                     <div class="card-meta">
@@ -215,6 +216,11 @@ export default {
     computed: {
         moviesByCategory() {
             const cats = {};
+
+            // Add "TV Shows" special category
+            const tvShows = this.movies.filter(m => m.contentType === 'series');
+            if (tvShows.length > 0) cats['TV Shows'] = tvShows.slice(0, 20);
+
             this.movies.forEach((movie) => {
                 if (movie.genres && movie.genres.length > 0) {
                     movie.genres.forEach((genre) => {
@@ -229,8 +235,13 @@ export default {
                 }
             });
             const sorted = Object.entries(cats)
-                .sort((a, b) => b[1].length - a[1].length)
-                .slice(0, 10);
+                .sort((a, b) => {
+                    // Keep TV Shows at top
+                    if (a[0] === 'TV Shows') return -1;
+                    if (b[0] === 'TV Shows') return 1;
+                    return b[1].length - a[1].length;
+                })
+                .slice(0, 12);
             const result = {};
             sorted.forEach(([key, val]) => {
                 result[key] = val;
@@ -380,6 +391,7 @@ export default {
 .scroll-left { left: 0; border-radius: 0 4px 4px 0; }
 .scroll-right { right: 0; border-radius: 4px 0 0 4px; }
 
+.series-badge { position: absolute; top: 8px; right: 8px; background: #E50914; color: #fff; font-size: 0.6rem; font-weight: 700; padding: 2px 6px; border-radius: 2px; text-transform: uppercase; z-index: 5; letter-spacing: 0.5px; }
 .movie-card { flex: 0 0 200px; height: 300px; border-radius: 4px; overflow: hidden; cursor: pointer; position: relative; transition: transform 0.3s ease, z-index 0s 0.3s; background: #1a1a1a; }
 .movie-card:hover { transform: scale(1.08); z-index: 20; transition: transform 0.3s ease, z-index 0s; }
 .movie-poster { width: 100%; height: 100%; object-fit: cover; }

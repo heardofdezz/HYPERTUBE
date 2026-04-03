@@ -120,6 +120,8 @@ async function enrichByTitle(rawTitle) {
 function extractMetadata(data, imdbCode) {
     return {
         title: data.title || '',
+        contentType: data.type === 'series' ? 'series' : 'movie',
+        totalSeasons: data.totalseasons ? Number(data.totalseasons) : null,
         director: data.director || '',
         writer: data.writer || '',
         imdb_code: data.imdbid || imdbCode || '',
