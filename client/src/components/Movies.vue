@@ -271,6 +271,9 @@ export default {
         '$route.query.category'() {
             this.fetchMovies();
         },
+        '$route.query.type'() {
+            this.fetchMovies();
+        },
     },
     methods: {
         async fetchMovies() {
@@ -278,8 +281,12 @@ export default {
             try {
                 const params = { limit: 100 };
                 const category = this.$route.query.category;
+                const type = this.$route.query.type;
                 if (category) {
-                    params.category = category === 'Anime' ? 'animation' : category.toLowerCase();
+                    params.category = category;
+                }
+                if (type) {
+                    params.type = type;
                 }
                 const response = await MoviesService.MoviesIndex(params);
                 this.movies = response.data || [];
