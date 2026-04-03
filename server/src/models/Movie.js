@@ -97,7 +97,7 @@ const movieSchema = new mongoose.Schema({
     }
 });
 
-movieSchema.index({ imdb_code: 1, provider: 1 }, { unique: true, sparse: true });
+movieSchema.index({ title: 1, provider: 1 });
 movieSchema.index({ title: 'text' });
 movieSchema.index({ lastSearched: 1 });
 
