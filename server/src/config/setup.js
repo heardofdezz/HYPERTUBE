@@ -12,16 +12,29 @@ const SEED_QUERIES = [
 
 function cleanTitle(raw) {
     return raw
-        .split('/').pop()                     // take last path segment
+        .split('/').pop()
         .replace(/\.(mkv|avi|mp4|mov|torrent)$/i, '')
         .replace(/\./g, ' ')
-        .replace(/\[.*?\]/g, '')              // remove [brackets]
-        .replace(/\((\d{4})\)/g, ' $1 ')      // keep year, remove parens
-        .replace(/\([^)]*\)/g, '')            // remove other (parens)
+        .replace(/\[.*?\]/g, '')
+        .replace(/\((\d{4})\)/g, ' $1 ')
+        .replace(/\([^)]*\)/g, '')
         .replace(/\b(720p|1080p|2160p|4k|BluRay|BRRip|BrRip|WEBRip|WEB-DL|HDRip|DVDRip|x264|x265|HEVC|AAC|DTS|DDP5|TrueHD|Atmos|REMUX|PROPER|IMAX|10bit|HDR|HDR10|DV|YIFY|YTS|RARBG|GalaxyRG\w*|FraMeSToR|jennaortega|Sujaidr|pimprg)\b/gi, '')
-        .replace(/-\s*\w*$/, '')              // remove release group suffix
+        .replace(/-\s*\w*$/, '')
         .replace(/\s+/g, ' ')
         .trim();
+}
+
+// Merge magnet into a movie doc, avoiding duplicates
+async function addMagnetToMovie(movie, magnet, seeds) {
+    if (!magnet) return;
+    if (!movie.magnet.some(m => m.magnet === magnet)) {
+        movie.magnet.push({ magnet, seeds });
+    }
+    if (seeds > (movie.seeds || 0)) {
+        movie.seeds = seeds;
+    }
+    movie.lastSearched = new Date();
+    await movie.save();
 }
 
 const seedMovies = async () => {
@@ -38,75 +51,56 @@ const seedMovies = async () => {
                 if (!title || title.length < 2) continue;
 
                 try {
-                    const existing = await Movie.findOne({ title: title, provider: torrent.provider });
-                    if (existing) {
-                        // Update seeds and add magnet if new
-                        existing.seeds = torrent.seeds;
-                        existing.lastSearched = new Date();
-                        if (torrent.magnet && !existing.magnet.some(m => m.magnet === torrent.magnet)) {
-                            existing.magnet.push({ magnet: torrent.magnet, seeds: torrent.seeds });
+                    // Try to enrich first to get imdb_code for dedup
+                    const metadata = await ImdbService.enrichByTitle(title);
+
+                    if (metadata && metadata.imdb_code) {
+                        // Check if this movie already exists by imdb_code
+                        const existing = await Movie.findOne({ imdb_code: metadata.imdb_code });
+                        if (existing) {
+                            await addMagnetToMovie(existing, torrent.magnet, torrent.seeds);
+                        } else {
+                            await Movie.create({
+                                ...metadata,
+                                provider: torrent.provider,
+                                seeds: torrent.seeds,
+                                magnet: torrent.magnet ? [{ magnet: torrent.magnet, seeds: torrent.seeds }] : [],
+                                lastSearched: new Date(),
+                            });
+                            totalSaved++;
+                            console.log(`  Saved: ${metadata.title} (${metadata.genres?.join(', ')})`);
                         }
-                        await existing.save();
                     } else {
-                        await Movie.create({
-                            title,
-                            provider: torrent.provider,
-                            seeds: torrent.seeds,
-                            magnet: torrent.magnet ? [{ magnet: torrent.magnet, seeds: torrent.seeds }] : [],
-                            lastSearched: new Date(),
-                        });
-                        totalSaved++;
-                        console.log(`  Saved: ${title}`);
+                        // No IMDB match — save by title, skip if exists
+                        const existing = await Movie.findOne({ title });
+                        if (!existing) {
+                            await Movie.create({
+                                title,
+                                provider: torrent.provider,
+                                seeds: torrent.seeds,
+                                magnet: torrent.magnet ? [{ magnet: torrent.magnet, seeds: torrent.seeds }] : [],
+                                lastSearched: new Date(),
+                            });
+                            totalSaved++;
+                            console.log(`  Saved (no metadata): ${title}`);
+                        } else {
+                            await addMagnetToMovie(existing, torrent.magnet, torrent.seeds);
+                        }
                     }
                 } catch (e) {
-                    // Skip duplicates and errors
+                    // Skip
                 }
+
+                await new Promise((r) => setTimeout(r, 350));
             }
 
-            await new Promise((r) => setTimeout(r, 2000));
+            await new Promise((r) => setTimeout(r, 1000));
         } catch (e) {
             console.error(`Seeder: failed for query "${query}":`, e.message);
         }
     }
 
     console.log(`Background seeder: complete (${totalSaved} new movies saved)`);
-
-    // Immediately enrich after seeding
-    await enrichUnenrichedMovies();
 };
 
-const enrichUnenrichedMovies = async () => {
-    const unenriched = await Movie.find(
-        { $or: [{ cover: { $in: [null, ''] } }, { rating: null }] },
-        null,
-        { limit: 50, sort: { lastSearched: -1 } }
-    );
-
-    if (unenriched.length === 0) return;
-
-    console.log(`Enrichment: enriching ${unenriched.length} movies...`);
-
-    for (const movie of unenriched) {
-        try {
-            const metadata = movie.imdb_code
-                ? await ImdbService.enrichByImdbCode(movie.imdb_code)
-                : await ImdbService.enrichByTitle(movie.title);
-
-            if (metadata) {
-                await Movie.updateOne(
-                    { _id: movie._id },
-                    { $set: { ...metadata, lastSearched: new Date() } }
-                );
-                console.log(`  Enriched: ${movie.title} -> rating:${metadata.rating}, cover:${!!metadata.cover}`);
-            }
-        } catch (e) {
-            // Skip
-        }
-
-        await new Promise((r) => setTimeout(r, 500));
-    }
-
-    console.log('Enrichment: complete');
-};
-
-module.exports = { seedMovies, enrichUnenrichedMovies };
+module.exports = { seedMovies };
