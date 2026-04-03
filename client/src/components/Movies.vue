@@ -82,7 +82,7 @@
                     </p>
                     <p v-if="featuredMovie.summary" class="hero-movie-summary">{{ truncate(featuredMovie.summary, 200) }}</p>
                     <div class="hero-actions">
-                        <button class="btn-play" @click="goToMovie(featuredMovie)">
+                        <button class="btn-play" @click="playMovie(featuredMovie)">
                             <Play :size="22" /> Play
                         </button>
                         <button class="btn-info" @click="goToMovie(featuredMovie)">
@@ -315,6 +315,9 @@ export default {
         },
         goToMovie(movie) {
             this.$router.push({ name: 'MovieDetail', params: { id: movie._id } });
+        },
+        playMovie(movie) {
+            this.$router.push({ name: 'Watch', params: { id: movie._id } });
         },
         truncate(text, len) {
             if (!text) return '';

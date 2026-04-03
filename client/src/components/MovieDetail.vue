@@ -20,7 +20,7 @@
                         <span v-if="movie.country">{{ movie.country }}</span>
                     </div>
                     <div class="detail-actions">
-                        <button class="btn-play-large">
+                        <button class="btn-play-large" @click="playMovie">
                             <Play :size="26" /> Play
                         </button>
                     </div>
@@ -90,12 +90,14 @@ export default {
         await this.fetchMovie();
     },
     methods: {
+        playMovie() {
+            this.$router.push({ name: 'Watch', params: { id: this.movie._id } });
+        },
         async fetchMovie() {
             this.loading = true;
             try {
-                const response = await Api().get('movies?limit=100');
-                const movies = response.data || [];
-                this.movie = movies.find((m) => m._id === this.$route.params.id) || null;
+                const response = await Api().get(`movie/${this.$route.params.id}`);
+                this.movie = response.data;
             } catch (err) {
                 console.error('Failed to load movie:', err);
             } finally {
