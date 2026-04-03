@@ -33,11 +33,16 @@
                         @click="goToMovie(movie)"
                     >
                         <img
-                            :src="movie.cover || 'https://via.placeholder.com/200x300/141414/666?text=No+Poster'"
+                            v-if="movie.cover"
+                            :src="movie.cover"
                             :alt="movie.title"
                             class="movie-poster"
                             loading="lazy"
                         />
+                        <div v-else class="movie-poster-placeholder">
+                            <Film :size="32" color="#555" />
+                            <span>{{ movie.title }}</span>
+                        </div>
                         <div class="card-hover">
                             <h3 class="card-title">{{ movie.title }}</h3>
                             <div class="card-meta">
@@ -48,9 +53,6 @@
                                 <span v-if="movie.rating" class="card-match">{{ Math.round(movie.rating * 10) }}%</span>
                                 <span v-if="movie.year">{{ movie.year }}</span>
                                 <span v-if="movie.provider" class="card-provider">{{ movie.provider }}</span>
-                            </div>
-                            <div class="card-genres" v-if="movie.genres && movie.genres.length">
-                                <span v-for="(genre, i) in movie.genres.slice(0, 3)" :key="i">{{ genre }}</span>
                             </div>
                         </div>
                     </div>
@@ -66,16 +68,19 @@
         <template v-if="!searchActive || !searchQuery">
             <!-- Hero Banner -->
             <div class="hero-banner" v-if="featuredMovie">
-                <div class="hero-backdrop" :style="{ backgroundImage: `url(${featuredMovie.cover})` }"></div>
+                <div class="hero-backdrop" :style="featuredMovie.cover ? { backgroundImage: `url(${featuredMovie.cover})` } : { background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }"></div>
                 <div class="hero-gradient"></div>
                 <div class="hero-info">
                     <h1 class="hero-movie-title">{{ featuredMovie.title }}</h1>
                     <p class="hero-movie-meta">
-                        <span class="match">{{ Math.round((featuredMovie.rating || 7) * 10) }}% Match</span>
-                        <span>{{ featuredMovie.year }}</span>
+                        <span v-if="featuredMovie.rating" class="match">{{ Math.round(featuredMovie.rating * 10) }}% Match</span>
+                        <span v-if="featuredMovie.year">{{ featuredMovie.year }}</span>
                         <span v-if="featuredMovie.runtime">{{ featuredMovie.runtime }}</span>
+                        <span v-if="featuredMovie.seeds" class="seeds-badge">
+                            <ArrowUp :size="14" /> {{ featuredMovie.seeds }} seeds
+                        </span>
                     </p>
-                    <p class="hero-movie-summary">{{ truncate(featuredMovie.summary, 200) }}</p>
+                    <p v-if="featuredMovie.summary" class="hero-movie-summary">{{ truncate(featuredMovie.summary, 200) }}</p>
                     <div class="hero-actions">
                         <button class="btn-play" @click="goToMovie(featuredMovie)">
                             <Play :size="22" /> Play
@@ -97,11 +102,11 @@
                 </div>
             </div>
 
-            <!-- Category Rows -->
-            <div class="browse-rows" v-else>
+            <!-- Category Rows (when genres exist) -->
+            <div class="browse-rows" v-else-if="hasCategories">
                 <div
                     class="category-row"
-                    v-for="(movies, category) in moviesByCategory"
+                    v-for="(catMovies, category) in moviesByCategory"
                     :key="category"
                 >
                     <h2 class="row-title">{{ category }}</h2>
@@ -112,26 +117,27 @@
                         <div class="row-movies">
                             <div
                                 class="movie-card"
-                                v-for="movie in movies"
+                                v-for="movie in catMovies"
                                 :key="movie._id"
                                 @click="goToMovie(movie)"
                             >
                                 <img
-                                    :src="movie.cover || 'https://via.placeholder.com/200x300/141414/666?text=No+Poster'"
+                                    v-if="movie.cover"
+                                    :src="movie.cover"
                                     :alt="movie.title"
                                     class="movie-poster"
                                     loading="lazy"
                                 />
+                                <div v-else class="movie-poster-placeholder">
+                                    <Film :size="28" color="#555" />
+                                    <span>{{ movie.title }}</span>
+                                </div>
                                 <div class="card-hover">
                                     <h3 class="card-title">{{ movie.title }}</h3>
                                     <div class="card-meta">
-                                        <span class="card-match">{{ Math.round((movie.rating || 5) * 10) }}%</span>
-                                        <span>{{ movie.year }}</span>
-                                    </div>
-                                    <div class="card-genres">
-                                        <span v-for="(genre, i) in (movie.genres || []).slice(0, 3)" :key="i">
-                                            {{ genre }}
-                                        </span>
+                                        <span v-if="movie.rating" class="card-match">{{ Math.round(movie.rating * 10) }}%</span>
+                                        <span v-if="movie.year">{{ movie.year }}</span>
+                                        <span v-if="movie.seeds" class="card-seeds"><ArrowUp :size="11" /> {{ movie.seeds }}</span>
                                     </div>
                                 </div>
                             </div>
@@ -141,11 +147,47 @@
                         </button>
                     </div>
                 </div>
+            </div>
 
-                <div v-if="Object.keys(moviesByCategory).length === 0" class="empty-state">
-                    <Film :size="80" color="#555" />
-                    <p>No movies found. Try searching for something!</p>
+            <!-- All Movies Grid (fallback when no genres) -->
+            <div class="browse-rows" v-else-if="movies.length > 0">
+                <div class="category-row">
+                    <h2 class="row-title">All Titles</h2>
+                    <div class="results-grid">
+                        <div
+                            class="movie-card"
+                            v-for="movie in movies"
+                            :key="movie._id"
+                            @click="goToMovie(movie)"
+                        >
+                            <img
+                                v-if="movie.cover"
+                                :src="movie.cover"
+                                :alt="movie.title"
+                                class="movie-poster"
+                                loading="lazy"
+                            />
+                            <div v-else class="movie-poster-placeholder">
+                                <Film :size="28" color="#555" />
+                                <span>{{ movie.title }}</span>
+                            </div>
+                            <div class="card-hover">
+                                <h3 class="card-title">{{ movie.title }}</h3>
+                                <div class="card-meta">
+                                    <span v-if="movie.seeds" class="card-seeds"><ArrowUp :size="11" /> {{ movie.seeds }}</span>
+                                    <span v-if="movie.rating" class="card-match">{{ Math.round(movie.rating * 10) }}%</span>
+                                    <span v-if="movie.year">{{ movie.year }}</span>
+                                    <span v-if="movie.provider" class="card-provider">{{ movie.provider }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+            </div>
+
+            <div v-else class="empty-state">
+                <Film :size="80" color="#555" />
+                <p>No movies found. Try searching for something!</p>
             </div>
         </template>
     </div>
@@ -195,6 +237,9 @@ export default {
             });
             return result;
         },
+        hasCategories() {
+            return Object.keys(this.moviesByCategory).length > 0;
+        },
     },
     async mounted() {
         if (this.$route.query.q) {
@@ -228,12 +273,15 @@ export default {
                 const response = await MoviesService.MoviesIndex(params);
                 this.movies = response.data || [];
                 if (this.movies.length > 0) {
-                    const rated = this.movies
-                        .filter((m) => m.cover && m.summary && m.rating >= 6)
-                        .sort((a, b) => (b.rating || 0) - (a.rating || 0));
-                    this.featuredMovie = rated.length > 0
-                        ? rated[Math.floor(Math.random() * Math.min(rated.length, 10))]
-                        : this.movies[0];
+                    // Pick featured: prefer enriched, fall back to highest seeds
+                    const enriched = this.movies.filter((m) => m.cover && m.summary);
+                    if (enriched.length > 0) {
+                        const sorted = enriched.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+                        this.featuredMovie = sorted[Math.floor(Math.random() * Math.min(sorted.length, 5))];
+                    } else {
+                        const sorted = [...this.movies].sort((a, b) => (b.seeds || 0) - (a.seeds || 0));
+                        this.featuredMovie = sorted[0];
+                    }
                 }
             } catch (err) {
                 console.error('Failed to fetch movies:', err);
@@ -302,13 +350,14 @@ export default {
 .results-title { color: #e5e5e5; font-size: 1.3rem; font-weight: 700; margin-bottom: 20px; }
 .results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
 
-.hero-banner { position: relative; height: 80vh; min-height: 500px; display: flex; align-items: flex-end; padding: 0 4% 8%; }
-.hero-backdrop { position: absolute; inset: 0; background-size: cover; background-position: center top; filter: brightness(0.5); }
-.hero-gradient { position: absolute; inset: 0; background: linear-gradient(to bottom, transparent 0%, rgba(20,20,20,0.4) 50%, #141414 100%); }
+.hero-banner { position: relative; height: 70vh; min-height: 400px; display: flex; align-items: flex-end; padding: 0 4% 6%; }
+.hero-backdrop { position: absolute; inset: 0; background-size: cover; background-position: center top; }
+.hero-gradient { position: absolute; inset: 0; background: linear-gradient(to bottom, transparent 0%, rgba(20,20,20,0.6) 50%, #141414 100%); }
 .hero-info { position: relative; z-index: 2; max-width: 550px; }
-.hero-movie-title { font-size: 3rem; font-weight: 900; color: #fff; margin-bottom: 12px; text-shadow: 2px 2px 8px rgba(0,0,0,0.6); }
-.hero-movie-meta { display: flex; gap: 12px; align-items: center; color: #ddd; font-size: 0.95rem; margin-bottom: 12px; }
+.hero-movie-title { font-size: 2.8rem; font-weight: 900; color: #fff; margin-bottom: 12px; text-shadow: 2px 2px 8px rgba(0,0,0,0.6); }
+.hero-movie-meta { display: flex; gap: 12px; align-items: center; color: #ddd; font-size: 0.95rem; margin-bottom: 12px; flex-wrap: wrap; }
 .match { color: #46d369; font-weight: 700; }
+.seeds-badge { color: #46d369; display: flex; align-items: center; gap: 4px; }
 .hero-movie-summary { color: #ddd; font-size: 1rem; line-height: 1.5; margin-bottom: 24px; text-shadow: 1px 1px 4px rgba(0,0,0,0.5); }
 .hero-actions { display: flex; gap: 12px; }
 .btn-play { display: inline-flex; align-items: center; gap: 8px; background: #fff; color: #000; border: none; border-radius: 4px; padding: 10px 28px; font-size: 1.1rem; font-weight: 700; cursor: pointer; transition: opacity 0.2s; }
@@ -316,7 +365,7 @@ export default {
 .btn-info { display: inline-flex; align-items: center; gap: 8px; background: rgba(109,109,110,0.7); color: #fff; border: none; border-radius: 4px; padding: 10px 28px; font-size: 1.1rem; font-weight: 700; cursor: pointer; transition: background 0.2s; }
 .btn-info:hover { background: rgba(109,109,110,0.4); }
 
-.browse-rows { margin-top: -80px; position: relative; z-index: 3; }
+.browse-rows { position: relative; z-index: 3; padding-top: 20px; }
 .category-row { margin-bottom: 40px; padding: 0 4%; }
 .row-title { color: #e5e5e5; font-size: 1.3rem; font-weight: 700; margin-bottom: 12px; }
 .row-container { position: relative; }
@@ -328,10 +377,12 @@ export default {
 .scroll-left { left: 0; border-radius: 0 4px 4px 0; }
 .scroll-right { right: 0; border-radius: 4px 0 0 4px; }
 
-.movie-card { flex: 0 0 200px; height: 300px; border-radius: 4px; overflow: hidden; cursor: pointer; position: relative; transition: transform 0.3s ease, z-index 0s 0.3s; }
-.movie-card:hover { transform: scale(1.3); z-index: 20; transition: transform 0.3s ease, z-index 0s; }
+.movie-card { flex: 0 0 200px; height: 300px; border-radius: 4px; overflow: hidden; cursor: pointer; position: relative; transition: transform 0.3s ease, z-index 0s 0.3s; background: #1a1a1a; }
+.movie-card:hover { transform: scale(1.08); z-index: 20; transition: transform 0.3s ease, z-index 0s; }
 .movie-poster { width: 100%; height: 100%; object-fit: cover; }
-.card-hover { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(to top, #181818 0%, transparent 100%); padding: 60px 12px 12px; opacity: 0; transition: opacity 0.3s; }
+.movie-poster-placeholder { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; text-align: center; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); }
+.movie-poster-placeholder span { color: #888; font-size: 0.75rem; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.card-hover { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, transparent 100%); padding: 60px 12px 12px; opacity: 0; transition: opacity 0.3s; }
 .movie-card:hover .card-hover { opacity: 1; }
 .card-title { color: #fff; font-size: 0.85rem; font-weight: 700; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-meta { display: flex; gap: 8px; font-size: 0.75rem; color: #aaa; margin-bottom: 4px; align-items: center; }
@@ -353,10 +404,9 @@ export default {
 .results-grid .movie-card { flex: none; width: 100%; height: 300px; }
 
 @media (max-width: 768px) {
-    .hero-banner { height: 60vh; min-height: 400px; }
+    .hero-banner { height: 50vh; min-height: 300px; }
     .hero-movie-title { font-size: 1.8rem; }
     .movie-card { flex: 0 0 140px; height: 210px; }
-    .movie-card:hover { transform: scale(1.1); }
     .results-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 }
 </style>
