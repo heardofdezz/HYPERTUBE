@@ -1,25 +1,37 @@
 # Hypertube
 
-A free, open streaming app for movies, TV shows, and anime. Netflix-style UI powered by live torrent search across multiple providers.
+A free, open streaming app for movies, TV shows, and anime. Netflix-style UI with torrent-powered playback and continuous content discovery.
 
 ## Tech Stack
 
 - **Frontend:** Vue 3, Vuetify 3, Vue Router, Lucide Icons, Axios
 - **Backend:** Node.js, Express 5, Mongoose/MongoDB
-- **Torrent Search:** torrent-search-api (ThePirateBay, 1337x, YTS, etc.)
-- **Metadata:** OMDB API for covers, ratings, genres, cast
+- **Streaming:** torrent-stream (magnet-to-HTTP with range requests)
+- **Torrent Search:** torrent-search-api (ThePirateBay + configurable providers)
+- **Metadata:** OMDB API (posters, ratings, genres, cast) with 1,000/day quota management
 - **Build:** Webpack 5, Babel 7
 - **DevOps:** Docker Compose, GitHub Actions CI
 
 ## Features
 
 - Netflix-style browse page with hero banner and genre-based category rows
+- Torrent-powered video player with HTTP range request streaming
 - Live torrent search across multiple providers
-- Movie/show detail pages with metadata, cast, and comments
-- Background seeder auto-populates the database on startup
-- OMDB enrichment adds posters, ratings, genres, and plot summaries
-- Subtitle support via OpenSubtitles API
+- Continuous background seeder — automatically discovers and adds new content 24/7
+- OMDB enrichment with daily quota management (950 seeder + 50 reserved for search)
+- Subtitle support (EN/FR) via OpenSubtitles API
+- Movie detail pages with metadata, cast, and comments
+- No login required — completely open and free
 - Fully responsive dark theme
+
+## How It Works
+
+1. **Continuous seeder** cycles through 80+ search queries (movies, TV shows, anime) across torrent providers
+2. Each result is deduplicated by IMDB code — multiple torrents of the same title merge into one entry with multiple magnet links
+3. **OMDB enrichment** adds posters, genres, ratings, and plot summaries (respects 1,000/day free tier limit)
+4. When quota runs low, the seeder slows down; when exhausted, it saves torrents without metadata and resumes enrichment the next day
+5. **Playback** selects the best magnet (highest seeds), starts a torrent stream, and serves video over HTTP with range requests
+6. Downloaded files are cached to disk for instant replay
 
 ## Prerequisites
 
@@ -36,10 +48,7 @@ A free, open streaming app for movies, TV shows, and anime. Netflix-style UI pow
 git clone https://github.com/heardofdezz/HYPERTUBE.git
 cd HYPERTUBE
 
-# Install server dependencies
 cd server && npm install
-
-# Install client dependencies
 cd ../client && npm install
 ```
 
@@ -59,33 +68,29 @@ brew services start mongodb-community
 cp server/.env.example server/.env
 ```
 
-Edit `server/.env` and add your OMDB API key:
+Add your OMDB API key to `server/.env`:
 
 ```
 IMDB_API_KEY=your-omdb-key
 ```
 
-See `.env.example` for all available settings (torrent providers, search limits, etc.)
-
-### 4. Run development servers
+### 4. Run
 
 ```bash
-# Terminal 1 - Server (localhost:8081)
+# Terminal 1 — Server (localhost:8081)
 cd server && npm start
 
-# Terminal 2 - Client (localhost:8080)
+# Terminal 2 — Client (localhost:8080)
 cd client && npm run dev
 ```
 
-The background seeder will automatically search for popular movies, TV shows, and anime and populate the database. OMDB enrichment runs after seeding to add posters, ratings, and genres.
+The continuous seeder starts automatically and begins populating the database. Content appears on the browse page as it's discovered.
 
-### 5. Run with Docker (optional)
+### 5. Docker (optional)
 
 ```bash
 docker compose up --build
 ```
-
-This starts MongoDB, the server, and the client together.
 
 ## Testing
 
@@ -97,35 +102,34 @@ cd server && npm test
 
 ```
 HYPERTUBE/
-├── client/                    # Vue.js frontend
-│   ├── build/                 # Webpack configuration
-│   ├── src/
-│   │   ├── components/        # Index, Movies, MovieDetail, Header
-│   │   ├── router/            # Vue Router (Home, Browse, MovieDetail)
-│   │   ├── services/          # API client, MoviesService
-│   │   └── store/             # Vuex store
-│   └── Dockerfile
-├── server/                    # Express backend
-│   ├── src/
-│   │   ├── controllers/       # MovieController, SearchController
-│   │   ├── services/          # TorrentSearchService, ImdbService
-│   │   ├── models/            # Movie (Mongoose schema)
-│   │   ├── routers/           # movie, comment routes
-│   │   ├── config/            # Config, setup (seeder)
-│   │   └── functions/         # Streaming helpers
-│   └── Dockerfile
-├── docker-compose.yml         # MongoDB + server + client
-└── .github/workflows/ci.yml   # CI pipeline
+├── client/
+│   └── src/
+│       ├── components/        # Index, Movies, MovieDetail, VideoPlayer, Header
+│       ├── router/            # Home, Browse, MovieDetail, Watch
+│       └── services/          # Api, MoviesService
+├── server/
+│   └── src/
+│       ├── controllers/       # MovieController, SearchController
+│       ├── services/          # TorrentSearchService, ImdbService
+│       ├── models/            # Movie schema
+│       ├── routers/           # stream, subtitles, categories, comments
+│       ├── config/            # Config, continuous seeder
+│       └── functions/         # HTTP range streaming
+├── docker-compose.yml
+└── .github/workflows/ci.yml
 ```
 
 ## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/movies` | Browse cached movies (supports query, category, sort, limit, page) |
-| GET | `/search` | Live torrent search (query, category, limit) |
+| GET | `/movies` | Browse cached movies (query, category, sort, limit, page) |
+| GET | `/search` | Live torrent search with OMDB enrichment |
+| GET | `/movie/:id` | Single movie details with magnet availability |
+| GET | `/stream/:id` | Torrent-to-HTTP video stream (range requests) |
 | GET | `/categories` | List available genres |
-| GET | `/subtitles/:id` | Download subtitles (EN/FR) |
+| GET | `/subtitles/:id` | Fetch subtitles (EN/FR) |
+| GET | `/subtitles-file/:filename` | Serve VTT subtitle files |
 | POST | `/comment/:id` | Add a comment to a movie |
 
 ## Configuration
@@ -133,10 +137,10 @@ HYPERTUBE/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MONGODB_URI` | `mongodb://localhost:27017/hypertube` | MongoDB connection string |
-| `IMDB_API_KEY` | — | OMDB API key for metadata enrichment |
+| `IMDB_API_KEY` | — | OMDB API key (free: 1,000 requests/day) |
 | `TORRENT_PROVIDERS` | `ThePirateBay` | Comma-separated torrent providers |
-| `TORRENT_SEARCH_LIMIT` | `20` | Max results per search |
-| `TORRENT_CACHE_TTL_HOURS` | `24` | Hours before cached results are refreshed |
+| `TORRENT_SEARCH_LIMIT` | `20` | Default results per search |
+| `TORRENT_CACHE_TTL_HOURS` | `24` | Cache freshness window |
 | `PORT` | `8081` | Server port |
 | `CORS_ORIGINS` | `http://localhost:8080` | Allowed CORS origins |
 
