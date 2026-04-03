@@ -22,7 +22,7 @@ module.exports = {
                 return res.status(400).json({ error: 'Search query must be at least 2 characters' });
             }
 
-            const category = req.query.category || 'Movies';
+            const category = req.query.category || 'All';
             const limit = Math.min(Number(req.query.limit) || Config.torrent.defaultLimit, 100);
 
             // Phase 1: Check cache

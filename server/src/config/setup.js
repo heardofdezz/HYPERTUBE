@@ -3,8 +3,11 @@ const ImdbService = require('../services/ImdbService');
 const Movie = require('../models/Movie');
 
 const SEED_QUERIES = [
-    'popular movies', 'top rated', 'action', 'comedy', 'drama',
-    'thriller', 'horror', 'sci-fi', 'adventure', 'romance'
+    'interstellar', 'inception', 'avatar', 'the dark knight', 'pulp fiction',
+    'breaking bad', 'game of thrones', 'stranger things', 'the witcher',
+    'naruto', 'one piece', 'attack on titan', 'demon slayer', 'jujutsu kaisen',
+    'oppenheimer', 'dune', 'barbie', 'john wick', 'spider man',
+    'the mandalorian', 'the last of us', 'wednesday', 'squid game',
 ];
 
 const seedMovies = async () => {
@@ -12,7 +15,7 @@ const seedMovies = async () => {
 
     for (const query of SEED_QUERIES) {
         try {
-            const torrents = await TorrentSearchService.search(query, 'Movies', 20);
+            const torrents = await TorrentSearchService.search(query, 'All', 20);
             console.log(`Seeder: found ${torrents.length} results for "${query}"`);
 
             for (const torrent of torrents) {
