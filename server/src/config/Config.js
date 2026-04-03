@@ -1,16 +1,10 @@
 /// Configuration file for the database, ENV, PORT, & ETC..
 
-if (!process.env.MONGODB_URI) {
-    console.warn('Warning: MONGODB_URI not set. Copy server/.env.example to server/.env and fill in your values.');
-}
 
 module.exports = {
     port: process.env.PORT || 8081,
     db: {
-        uri: process.env.MONGODB_URI || ''
-    },
-    authentification: {
-        jwtSecret: process.env.JWT_SECRET || ''
+        uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/hypertube'
     },
     email: {
         user: process.env.EMAIL_USER || '',
@@ -25,7 +19,7 @@ module.exports = {
         password: process.env.OPENSUBTITLES_PASSWORD || ''
     },
     torrent: {
-        providers: (process.env.TORRENT_PROVIDERS || '1337x,ThePirateBay,Yts').split(',').map(s => s.trim()),
+        providers: (process.env.TORRENT_PROVIDERS || 'ThePirateBay').split(',').map(s => s.trim()),
         defaultLimit: Number(process.env.TORRENT_SEARCH_LIMIT) || 20,
         cacheTTLHours: Number(process.env.TORRENT_CACHE_TTL_HOURS) || 24,
     }

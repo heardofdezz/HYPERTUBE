@@ -4,82 +4,45 @@
             <router-link to="/" class="logo">
                 <span class="logo-text">HYPERTUBE</span>
             </router-link>
-            <template v-if="isLoggedIn">
-                <router-link to="/browse" class="nav-link">Home</router-link>
-                <router-link to="/browse" class="nav-link">Movies</router-link>
-            </template>
+            <router-link to="/browse" class="nav-link">Home</router-link>
+            <router-link to="/browse?category=Movies" class="nav-link">Movies</router-link>
+            <router-link to="/browse?category=TV" class="nav-link">TV Shows</router-link>
+            <router-link to="/browse?category=Anime" class="nav-link">Anime</router-link>
         </div>
 
         <div class="navbar-right">
-            <template v-if="isLoggedIn">
-                <div class="search-box" :class="{ active: searchActive }">
-                    <v-icon
-                        class="search-icon"
-                        @click="toggleSearch"
-                    >mdi-magnify</v-icon>
-                    <input
-                        v-if="searchActive"
-                        ref="searchInput"
-                        v-model="searchQuery"
-                        class="search-input"
-                        placeholder="Titles, people, genres"
-                        @blur="closeSearch"
-                        @keyup.enter="doSearch"
-                    />
-                </div>
-
-                <v-menu>
-                    <template v-slot:activator="{ props }">
-                        <div class="profile-trigger" v-bind="props">
-                            <div class="avatar">
-                                {{ userInitial }}
-                            </div>
-                            <v-icon size="small" class="caret">mdi-chevron-down</v-icon>
-                        </div>
-                    </template>
-                    <v-list class="profile-menu" bg-color="#1a1a1a">
-                        <v-list-item :to="{ name: 'Profile' }">
-                            <v-list-item-title>Profile</v-list-item-title>
-                        </v-list-item>
-                        <v-list-item :to="{ name: 'Settings' }">
-                            <v-list-item-title>Settings</v-list-item-title>
-                        </v-list-item>
-                        <v-divider></v-divider>
-                        <v-list-item @click="logout">
-                            <v-list-item-title>Sign out</v-list-item-title>
-                        </v-list-item>
-                    </v-list>
-                </v-menu>
-            </template>
-
-            <template v-else>
-                <router-link to="/login">
-                    <v-btn variant="flat" color="#E50914" class="sign-in-btn">Sign In</v-btn>
-                </router-link>
-            </template>
+            <div class="search-box" :class="{ active: searchActive }">
+                <Search
+                    class="search-icon"
+                    :size="20"
+                    @click="toggleSearch"
+                />
+                <input
+                    v-if="searchActive"
+                    ref="searchInput"
+                    v-model="searchQuery"
+                    class="search-input"
+                    placeholder="Titles, people, genres"
+                    @blur="closeSearch"
+                    @keyup.enter="doSearch"
+                />
+            </div>
         </div>
     </nav>
 </template>
 
 <script>
+import { Search } from 'lucide-vue-next';
+
 export default {
     name: 'AppHeader',
+    components: { Search },
     data() {
         return {
             isScrolled: false,
             searchActive: false,
             searchQuery: '',
         };
-    },
-    computed: {
-        isLoggedIn() {
-            return this.$store.state.isUserLoggedIn;
-        },
-        userInitial() {
-            const user = this.$store.state.user;
-            if (user && user.username) return user.username.charAt(0).toUpperCase();
-            return 'U';
-        },
     },
     mounted() {
         window.addEventListener('scroll', this.handleScroll);
@@ -108,10 +71,6 @@ export default {
             if (this.searchQuery.trim()) {
                 this.$router.push({ name: 'Browse', query: { q: this.searchQuery } });
             }
-        },
-        logout() {
-            this.$store.dispatch('logout');
-            this.$router.push({ name: 'Home' });
         },
     },
 };
@@ -174,7 +133,6 @@ export default {
 .search-icon {
     color: #fff;
     cursor: pointer;
-    font-size: 22px;
 }
 .search-input {
     background: transparent;
@@ -187,41 +145,5 @@ export default {
 }
 .search-input::placeholder {
     color: #999;
-}
-
-.profile-trigger {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-}
-.avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 4px;
-    background: #E50914;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    font-size: 0.85rem;
-}
-.caret {
-    color: #fff;
-    transition: transform 0.2s;
-}
-
-.profile-menu {
-    border-radius: 4px;
-    border: 1px solid #333;
-}
-
-.sign-in-btn {
-    text-transform: none;
-    font-weight: 600;
-    font-size: 0.9rem;
-    border-radius: 4px;
-    padding: 0 16px;
 }
 </style>

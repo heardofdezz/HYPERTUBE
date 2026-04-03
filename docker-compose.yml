@@ -1,6 +1,23 @@
 version: '3.8'
 
 services:
+  mongo:
+    image: mongo:7
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+
+  server:
+    build: ./server
+    ports:
+      - '8081:8081'
+    depends_on:
+      - mongo
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongo:27017/hypertube
+
   client:
     build: ./client
     ports:
@@ -8,11 +25,5 @@ services:
     depends_on:
       - server
 
-  server:
-    build: ./server
-    ports:
-      - '8081:8081'
-    env_file:
-      - ./server/.env
-    environment:
-      - NODE_ENV=production
+volumes:
+  mongo-data:

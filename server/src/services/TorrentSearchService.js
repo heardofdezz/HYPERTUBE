@@ -22,7 +22,7 @@ async function search(query, category, limit) {
     if (!initialized) init();
 
     const searchLimit = limit || Config.torrent.defaultLimit;
-    const searchCategory = category || 'Movies';
+    const searchCategory = category || 'All';
 
     const results = await Promise.race([
         TorrentSearchApi.search(query, searchCategory, searchLimit),

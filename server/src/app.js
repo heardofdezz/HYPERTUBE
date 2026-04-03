@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
 const Config = require('./config/Config');
 const app = express();
 const TorrentSearchService = require('./services/TorrentSearchService');
-const { seedMovies, enrichUnenrichedMovies } = require('./config/setup');
+const { startContinuousSeeding } = require('./config/setup');
 const movieRouter = require('./routers/movie');
 const commentRouter = require('./routers/comment');
 
@@ -35,13 +35,8 @@ mongoose.connect(Config.db.uri).then(() => {
     // Initialize torrent search providers
     TorrentSearchService.init();
 
-    // Fire-and-forget background seeding
-    seedMovies().catch((e) => console.error('Seeder error:', e));
-
-    // Periodic IMDB enrichment (every 6 hours)
-    setInterval(() => {
-        enrichUnenrichedMovies().catch((e) => console.error('Enrichment error:', e));
-    }, 6 * 60 * 60 * 1000);
+    // Continuous background seeding — cycles through queries endlessly
+    startContinuousSeeding();
 
     app.use(movieRouter);
     app.use(commentRouter);
