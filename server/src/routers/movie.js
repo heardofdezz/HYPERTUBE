@@ -38,38 +38,38 @@ function addTrackersToMagnet(magnet) {
 }
 
 // Find the best magnet for a movie/episode
-function findBestMagnet(movie, seasonNum, episodeNum) {
-    // Series with season/episode specified
+function pickMagnet(magnets, preferredQuality) {
+    if (!magnets || magnets.length === 0) return null;
+    // If quality preference, try to match it
+    if (preferredQuality) {
+        const match = magnets.filter(m => m.quality === preferredQuality);
+        if (match.length > 0) return match.sort((a, b) => (b.seeds || 0) - (a.seeds || 0))[0].magnet;
+    }
+    // Fall back to highest seeds
+    return magnets.sort((a, b) => (b.seeds || 0) - (a.seeds || 0))[0].magnet;
+}
+
+function findBestMagnet(movie, seasonNum, episodeNum, quality) {
     if (movie.contentType === 'series' && seasonNum != null) {
         const season = movie.seasons.find(s => s.seasonNumber === seasonNum);
         if (season) {
             if (episodeNum != null) {
                 const episode = season.episodes.find(e => e.episodeNumber === episodeNum);
-                if (episode && episode.magnet.length > 0) {
-                    return episode.magnet.sort((a, b) => (b.seeds || 0) - (a.seeds || 0))[0].magnet;
-                }
+                const m = pickMagnet(episode?.magnet, quality);
+                if (m) return m;
             }
-            // Fall back to season pack
-            if (season.magnet.length > 0) {
-                return season.magnet.sort((a, b) => (b.seeds || 0) - (a.seeds || 0))[0].magnet;
-            }
+            const m = pickMagnet(season.magnet, quality);
+            if (m) return m;
         }
-        // Fall back to series pack
-        if (movie.seriesMagnet && movie.seriesMagnet.length > 0) {
-            return movie.seriesMagnet.sort((a, b) => (b.seeds || 0) - (a.seeds || 0))[0].magnet;
-        }
+        const m = pickMagnet(movie.seriesMagnet, quality);
+        if (m) return m;
     }
 
-    // Fall back to flat magnet array (movies, or series without structured data)
-    const magnets = movie.magnet.filter(m => m.magnet);
-    if (magnets.length > 0) {
-        return magnets.sort((a, b) => (b.seeds || 0) - (a.seeds || 0))[0].magnet;
-    }
-    return null;
+    return pickMagnet(movie.magnet.filter(m => m.magnet), quality);
 }
 
 // Start or get a torrent session
-async function getOrCreateSession(movieId, seasonNum, episodeNum) {
+async function getOrCreateSession(movieId, seasonNum, episodeNum, quality) {
     const sessionKey = seasonNum != null
         ? `${movieId}:S${seasonNum}E${episodeNum || 0}`
         : movieId;
@@ -106,7 +106,7 @@ async function getOrCreateSession(movieId, seasonNum, episodeNum) {
         }
     }
 
-    const bestMagnet = findBestMagnet(movie, seasonNum, episodeNum);
+    const bestMagnet = findBestMagnet(movie, seasonNum, episodeNum, quality);
     if (!bestMagnet) throw new Error('No magnet links available for this content');
 
     const magnetWithTrackers = addTrackersToMagnet(bestMagnet);
@@ -253,7 +253,8 @@ router.get('/prepare/:id', async (req, res) => {
     try {
         const seasonNum = req.query.season != null ? Number(req.query.season) : undefined;
         const episodeNum = req.query.episode != null ? Number(req.query.episode) : undefined;
-        const session = await getOrCreateSession(req.params.id, seasonNum, episodeNum);
+        const quality = req.query.quality || undefined;
+        const session = await getOrCreateSession(req.params.id, seasonNum, episodeNum, quality);
         res.json({
             status: session.status,
             progress: session.progress,
@@ -277,7 +278,8 @@ router.get('/stream/:id', async (req, res) => {
     try {
         const seasonNum = req.query.season != null ? Number(req.query.season) : undefined;
         const episodeNum = req.query.episode != null ? Number(req.query.episode) : undefined;
-        const session = await getOrCreateSession(req.params.id, seasonNum, episodeNum);
+        const quality = req.query.quality || undefined;
+        const session = await getOrCreateSession(req.params.id, seasonNum, episodeNum, quality);
 
         if (session.status === 'error') {
             return res.status(500).json({ error: session.error || 'Stream failed' });
@@ -326,20 +328,31 @@ router.get('/movie/:id', async (req, res) => {
             ? Math.max(...obj.magnet.map(m => m.seeds || 0))
             : 0;
 
-        // For series, include seasons structure but strip raw magnet strings
+        // For series, include seasons with episode metadata + quality options
         if (obj.contentType === 'series' && obj.seasons) {
             obj.seasons = obj.seasons.map(s => ({
                 seasonNumber: s.seasonNumber,
+                episodeCount: s.episodeCount || s.episodes?.length || 0,
                 hasMagnet: s.magnet && s.magnet.length > 0,
+                qualities: [...new Set((s.magnet || []).map(m => m.quality).filter(Boolean))],
                 episodes: (s.episodes || []).map(e => ({
                     episodeNumber: e.episodeNumber,
+                    title: e.title || null,
+                    rating: e.rating || null,
+                    released: e.released || null,
                     hasMagnet: e.magnet && e.magnet.length > 0,
                     bestSeeds: e.magnet && e.magnet.length > 0
                         ? Math.max(...e.magnet.map(m => m.seeds || 0))
                         : 0,
+                    qualities: [...new Set((e.magnet || []).map(m => m.quality).filter(Boolean))],
                 })),
             }));
             obj.hasSeriesMagnet = obj.seriesMagnet && obj.seriesMagnet.length > 0;
+        }
+
+        // For movies, expose quality options
+        if (obj.magnet && obj.magnet.length > 0) {
+            obj.qualities = [...new Set(obj.magnet.map(m => m.quality).filter(Boolean))];
         }
 
         delete obj.magnet;

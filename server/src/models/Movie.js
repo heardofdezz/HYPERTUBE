@@ -1,28 +1,28 @@
 const mongoose = require('mongoose');
 
 const commentSchema = new mongoose.Schema({
-    content: {
-        type: String,
-        trim: true
-    }
-}, {
-    timestamps: true
-});
+    content: { type: String, trim: true }
+}, { timestamps: true });
 
 const magnetSchema = new mongoose.Schema({
     magnet: { type: String },
     seeds: { type: Number },
     title: { type: String, trim: true },
+    quality: { type: String, trim: true },   // 720p, 1080p, 2160p, etc.
 }, { _id: false });
 
 const episodeSchema = new mongoose.Schema({
     episodeNumber: { type: Number, required: true },
+    title: { type: String, trim: true },      // "Pilot", "Cat's in the Bag..."
+    rating: { type: Number },                  // IMDb episode rating
+    released: { type: String, trim: true },    // "2008-01-20"
     magnet: [magnetSchema],
 }, { _id: false });
 
 const seasonSchema = new mongoose.Schema({
     seasonNumber: { type: Number, required: true },
-    magnet: [magnetSchema],       // season-level magnets (complete season packs)
+    episodeCount: { type: Number },            // Total episodes in this season (from OMDB)
+    magnet: [magnetSchema],
     episodes: [episodeSchema],
 }, { _id: false });
 
@@ -32,87 +32,32 @@ const movieSchema = new mongoose.Schema({
         enum: ['movie', 'series'],
         default: 'movie'
     },
-    provider: {
-        type: String,
-        trim: true
-    },
-    imdb_code: {
-        type: String,
-        trim: true
-    },
-    director: {
-        type: String,
-        trim: true
-    },
-    writer: {
-        type: String,
-        trim: true
-    },
-    title: {
-        type: String,
-        trim: true
-    },
-    cover: {
-        type: String,
-        trim: true
-    },
-    year: {
-        type: Number
-    },
-    rating: {
-        type: Number
-    },
-    runtime: {
-        type: String,
-        trim: true
-    },
-    totalSeasons: {
-        type: Number
-    },
-    genres: [
-        {
-            type: String,
-            trim: true
-        }
-    ],
-    summary: {
-        type: String,
-        trim: true
-    },
-    actors: {
-        type: String,
-        trim: true
-    },
-    country: {
-        type: String,
-        trim: true
-    },
+    provider: { type: String, trim: true },
+    imdb_code: { type: String, trim: true },
+    director: { type: String, trim: true },
+    writer: { type: String, trim: true },
+    title: { type: String, trim: true },
+    cover: { type: String, trim: true },
+    year: { type: Number },
+    rating: { type: Number },
+    runtime: { type: String, trim: true },
+    totalSeasons: { type: Number },
+    genres: [{ type: String, trim: true }],
+    summary: { type: String, trim: true },
+    actors: { type: String, trim: true },
+    country: { type: String, trim: true },
     torrent: [],
     magnet: [magnetSchema],
     seasons: [seasonSchema],
-    seriesMagnet: [magnetSchema],  // complete series packs
-    filePath: {
-        type: String,
-        trim: true
-    },
-    seeds: {
-        type: Number
-    },
-    subtitleFr: {
-        type: String
-    },
-    subtitleEn: {
-        type: String
-    },
-    isDownloaded: {
-        type: Boolean,
-        default: false
-    },
+    seriesMagnet: [magnetSchema],
+    filePath: { type: String, trim: true },
+    seeds: { type: Number },
+    subtitleFr: { type: String },
+    subtitleEn: { type: String },
+    isDownloaded: { type: Boolean, default: false },
     comments: [commentSchema],
-    lastSearched: {
-        type: Date,
-        default: Date.now
-    }
+    lastSearched: { type: Date, default: Date.now },
+    episodesEnriched: { type: Boolean, default: false },  // Whether OMDB episode data has been fetched
 });
 
 movieSchema.index({ title: 1, provider: 1 });

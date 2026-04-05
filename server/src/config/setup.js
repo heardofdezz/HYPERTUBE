@@ -103,4 +103,70 @@ const stopSeeding = () => {
     seedingActive = false;
 };
 
-module.exports = { startContinuousSeeding, stopSeeding };
+// Enrich series with episode titles from OMDB (1 call per season)
+const enrichSeriesEpisodes = async () => {
+    const Movie = require('../models/Movie');
+
+    const series = await Movie.find({
+        contentType: 'series',
+        imdb_code: { $ne: null, $ne: '' },
+        episodesEnriched: { $ne: true },
+    }).limit(10);
+
+    if (series.length === 0) return;
+    console.log(`Episode enrichment: ${series.length} series to process`);
+
+    for (const show of series) {
+        if (!ImdbService.isQuotaAvailable()) {
+            console.log('Episode enrichment: OMDB quota exhausted');
+            break;
+        }
+
+        const numSeasons = show.totalSeasons || show.seasons.length || 0;
+        let enrichedAny = false;
+
+        for (let s = 1; s <= numSeasons; s++) {
+            if (!ImdbService.isQuotaAvailable()) break;
+
+            const episodeData = await ImdbService.fetchSeasonEpisodes(show.imdb_code, s);
+            if (!episodeData) continue;
+
+            let season = show.seasons.find(x => x.seasonNumber === s);
+            if (!season) {
+                show.seasons.push({ seasonNumber: s, magnet: [], episodes: [] });
+                season = show.seasons.find(x => x.seasonNumber === s);
+            }
+            season.episodeCount = episodeData.length;
+
+            for (const epData of episodeData) {
+                let episode = season.episodes.find(e => e.episodeNumber === epData.episodeNumber);
+                if (!episode) {
+                    season.episodes.push({
+                        episodeNumber: epData.episodeNumber,
+                        title: epData.title,
+                        rating: epData.rating,
+                        released: epData.released,
+                        magnet: [],
+                    });
+                } else {
+                    if (!episode.title) episode.title = epData.title;
+                    if (!episode.rating) episode.rating = epData.rating;
+                    if (!episode.released) episode.released = epData.released;
+                }
+            }
+            season.episodes.sort((a, b) => a.episodeNumber - b.episodeNumber);
+            enrichedAny = true;
+
+            await new Promise((r) => setTimeout(r, 400));
+        }
+
+        if (enrichedAny) {
+            show.seasons.sort((a, b) => a.seasonNumber - b.seasonNumber);
+            show.episodesEnriched = true;
+            await show.save();
+            console.log(`  Enriched episodes: ${show.title} (${numSeasons} seasons)`);
+        }
+    }
+};
+
+module.exports = { startContinuousSeeding, stopSeeding, enrichSeriesEpisodes };

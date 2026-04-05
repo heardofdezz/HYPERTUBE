@@ -5,9 +5,9 @@
                 <span class="logo-text">HYPERTUBE</span>
             </router-link>
             <router-link to="/browse" class="nav-link">Home</router-link>
-            <router-link to="/browse?category=Movies" class="nav-link">Movies</router-link>
-            <router-link to="/browse?category=TV" class="nav-link">TV Shows</router-link>
-            <router-link to="/browse?category=Anime" class="nav-link">Anime</router-link>
+            <router-link to="/browse?type=movie" class="nav-link">Movies</router-link>
+            <router-link to="/browse?type=series" class="nav-link">TV Shows</router-link>
+            <router-link to="/browse?category=Animation" class="nav-link">Anime</router-link>
         </div>
 
         <div class="navbar-right">
