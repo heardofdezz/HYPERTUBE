@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
 const Config = require('./config/Config');
 const app = express();
 const TorrentSearchService = require('./services/TorrentSearchService');
-const { startContinuousSeeding } = require('./config/setup');
+const { startContinuousSeeding, enrichSeriesEpisodes } = require('./config/setup');
 const movieRouter = require('./routers/movie');
 const commentRouter = require('./routers/comment');
 
@@ -37,6 +37,10 @@ mongoose.connect(Config.db.uri).then(() => {
 
     // Continuous background seeding — cycles through queries endlessly
     startContinuousSeeding();
+
+    // Enrich series episodes every 30 minutes
+    enrichSeriesEpisodes().catch(() => {});
+    setInterval(() => enrichSeriesEpisodes().catch(() => {}), 30 * 60 * 1000);
 
     app.use(movieRouter);
     app.use(commentRouter);

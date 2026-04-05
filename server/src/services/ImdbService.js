@@ -136,4 +136,41 @@ function extractMetadata(data, imdbCode) {
     };
 }
 
-module.exports = { enrichByImdbCode, enrichByTitle, extractSearchName, isQuotaAvailable, getQuotaRemaining };
+/**
+ * Fetch episode titles/ratings for a season. 1 OMDB call per season.
+ * Returns array of { episodeNumber, title, rating, released }
+ */
+async function fetchSeasonEpisodes(imdbCode, seasonNumber) {
+    if (!imdbCode || !Config.imdb.apiKey || !isQuotaAvailable()) return null;
+
+    const cacheKey = `season:${imdbCode}:${seasonNumber}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) return cached;
+
+    try {
+        requestCount++;
+        const axios = require('axios');
+        const response = await axios.get(`http://www.omdbapi.com/?i=${imdbCode}&Season=${seasonNumber}&apikey=${Config.imdb.apiKey}`);
+        const data = response.data;
+
+        if (data.Response === 'False' || !data.Episodes) return null;
+
+        const episodes = data.Episodes.map(ep => ({
+            episodeNumber: Number(ep.Episode),
+            title: ep.Title || '',
+            rating: ep.imdbRating && ep.imdbRating !== 'N/A' ? Number(ep.imdbRating) : null,
+            released: ep.Released || '',
+        }));
+
+        cacheSet(cacheKey, episodes);
+        return episodes;
+    } catch (e) {
+        if (e.response?.status === 401 || e.response?.status === 429) {
+            console.warn(`OMDB rate limit hit (${requestCount}/${DAILY_LIMIT} used today)`);
+            requestCount = DAILY_LIMIT;
+        }
+        return null;
+    }
+}
+
+module.exports = { enrichByImdbCode, enrichByTitle, extractSearchName, isQuotaAvailable, getQuotaRemaining, fetchSeasonEpisodes };

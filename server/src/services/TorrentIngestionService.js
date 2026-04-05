@@ -17,12 +17,30 @@ function cleanTitle(raw) {
 }
 
 /**
+ * Detect video quality from torrent title
+ */
+function detectQuality(title) {
+    if (!title) return null;
+    if (/2160p|4k|UHD/i.test(title)) return '4K';
+    if (/1080p/i.test(title)) return '1080p';
+    if (/720p/i.test(title)) return '720p';
+    if (/480p/i.test(title)) return '480p';
+    if (/REMUX/i.test(title)) return '4K REMUX';
+    if (/BluRay|BrRip/i.test(title)) return '1080p';
+    if (/WEBRip|WEB-DL|WEB/i.test(title)) return '1080p';
+    if (/HDRip/i.test(title)) return '720p';
+    if (/DVDRip|CAM|TS/i.test(title)) return 'SD';
+    return null;
+}
+
+/**
  * Add a magnet link to the correct slot in a series document
  */
 function addEpisodeMagnet(movie, episodeInfo, magnet, seeds, rawTitle) {
     if (!magnet) return;
 
-    const magnetEntry = { magnet, seeds, title: rawTitle };
+    const quality = detectQuality(rawTitle);
+    const magnetEntry = { magnet, seeds, title: rawTitle, quality };
 
     // Complete series pack
     if (episodeInfo.isCompleteSeries) {
@@ -100,7 +118,7 @@ async function ingestTorrent(torrent) {
                 addEpisodeMagnet(existing, episodeInfo, torrent.magnet, torrent.seeds, rawTitle);
             } else {
                 if (torrent.magnet && !existing.magnet.some(m => m.magnet === torrent.magnet)) {
-                    existing.magnet.push({ magnet: torrent.magnet, seeds: torrent.seeds, title: rawTitle });
+                    existing.magnet.push({ magnet: torrent.magnet, seeds: torrent.seeds, title: rawTitle, quality: detectQuality(rawTitle) });
                 }
             }
             if (torrent.seeds > (existing.seeds || 0)) existing.seeds = torrent.seeds;
@@ -126,7 +144,7 @@ async function ingestTorrent(torrent) {
             await movie.save();
             return { movie, isNew: true };
         } else {
-            doc.magnet = torrent.magnet ? [{ magnet: torrent.magnet, seeds: torrent.seeds, title: rawTitle }] : [];
+            doc.magnet = torrent.magnet ? [{ magnet: torrent.magnet, seeds: torrent.seeds, title: rawTitle, quality: detectQuality(rawTitle) }] : [];
             const movie = await Movie.create(doc);
             return { movie, isNew: true };
         }
@@ -140,7 +158,7 @@ async function ingestTorrent(torrent) {
             addEpisodeMagnet(existing, episodeInfo, torrent.magnet, torrent.seeds, rawTitle);
         } else {
             if (torrent.magnet && !existing.magnet.some(m => m.magnet === torrent.magnet)) {
-                existing.magnet.push({ magnet: torrent.magnet, seeds: torrent.seeds, title: rawTitle });
+                existing.magnet.push({ magnet: torrent.magnet, seeds: torrent.seeds, title: rawTitle, quality: detectQuality(rawTitle) });
             }
         }
         if (torrent.seeds > (existing.seeds || 0)) existing.seeds = torrent.seeds;
@@ -167,7 +185,7 @@ async function ingestTorrent(torrent) {
         await movie.save();
         return { movie, isNew: true };
     } else {
-        doc.magnet = torrent.magnet ? [{ magnet: torrent.magnet, seeds: torrent.seeds, title: rawTitle }] : [];
+        doc.magnet = torrent.magnet ? [{ magnet: torrent.magnet, seeds: torrent.seeds, title: rawTitle, quality: detectQuality(rawTitle) }] : [];
         const movie = await Movie.create(doc);
         return { movie, isNew: true };
     }
