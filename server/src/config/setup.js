@@ -103,7 +103,81 @@ const stopSeeding = () => {
     seedingActive = false;
 };
 
-// Enrich series with episode titles from OMDB (1 call per season)
+// Merge OMDB episode data into a season, preserving existing magnet/title/rating
+function mergeSeasonData(show, seasonNumber, episodeData) {
+    let season = show.seasons.find(x => x.seasonNumber === seasonNumber);
+    if (!season) {
+        show.seasons.push({ seasonNumber, magnet: [], episodes: [] });
+        season = show.seasons.find(x => x.seasonNumber === seasonNumber);
+    }
+    season.episodeCount = episodeData.length;
+
+    for (const epData of episodeData) {
+        let episode = season.episodes.find(e => e.episodeNumber === epData.episodeNumber);
+        if (!episode) {
+            season.episodes.push({
+                episodeNumber: epData.episodeNumber,
+                title: epData.title,
+                rating: epData.rating,
+                released: epData.released,
+                magnet: [],
+            });
+        } else {
+            if (!episode.title) episode.title = epData.title;
+            if (!episode.rating) episode.rating = epData.rating;
+            if (!episode.released) episode.released = epData.released;
+        }
+    }
+    season.episodes.sort((a, b) => a.episodeNumber - b.episodeNumber);
+}
+
+// Enrich a single series doc. Options:
+//   parallel: fetch all seasons concurrently (fast, for on-demand)
+//   interSeasonDelayMs: delay between sequential fetches (for background batch)
+//   maxSeasons: cap seasons fetched (defense against 30+ season shows on-demand)
+const enrichOneSeries = async (show, { parallel = false, interSeasonDelayMs = 400, maxSeasons = Infinity } = {}) => {
+    if (!ImdbService.isQuotaAvailable()) return false;
+
+    const numSeasons = show.totalSeasons || show.seasons.length || 0;
+    if (numSeasons === 0) return false;
+
+    const targetSeasons = Math.min(numSeasons, maxSeasons);
+    let anyEnriched = false;
+    let allFetched = true;
+
+    if (parallel) {
+        const fetches = [];
+        for (let s = 1; s <= targetSeasons; s++) {
+            fetches.push(ImdbService.fetchSeasonEpisodes(show.imdb_code, s).then(data => ({ s, data })));
+        }
+        const results = await Promise.all(fetches);
+        for (const { s, data } of results) {
+            if (!data) { allFetched = false; continue; }
+            mergeSeasonData(show, s, data);
+            anyEnriched = true;
+        }
+    } else {
+        for (let s = 1; s <= targetSeasons; s++) {
+            if (!ImdbService.isQuotaAvailable()) { allFetched = false; break; }
+            const data = await ImdbService.fetchSeasonEpisodes(show.imdb_code, s);
+            if (!data) { allFetched = false; continue; }
+            mergeSeasonData(show, s, data);
+            anyEnriched = true;
+            await new Promise((r) => setTimeout(r, interSeasonDelayMs));
+        }
+    }
+
+    if (anyEnriched) {
+        show.seasons.sort((a, b) => a.seasonNumber - b.seasonNumber);
+        if (allFetched && targetSeasons === numSeasons) {
+            show.episodesEnriched = true;
+        }
+        await show.save();
+    }
+    return anyEnriched;
+};
+
+// Background batch: enrich up to 10 un-enriched series (1 OMDB call per season)
 const enrichSeriesEpisodes = async () => {
     const Movie = require('../models/Movie');
 
@@ -121,52 +195,11 @@ const enrichSeriesEpisodes = async () => {
             console.log('Episode enrichment: OMDB quota exhausted');
             break;
         }
-
-        const numSeasons = show.totalSeasons || show.seasons.length || 0;
-        let enrichedAny = false;
-
-        for (let s = 1; s <= numSeasons; s++) {
-            if (!ImdbService.isQuotaAvailable()) break;
-
-            const episodeData = await ImdbService.fetchSeasonEpisodes(show.imdb_code, s);
-            if (!episodeData) continue;
-
-            let season = show.seasons.find(x => x.seasonNumber === s);
-            if (!season) {
-                show.seasons.push({ seasonNumber: s, magnet: [], episodes: [] });
-                season = show.seasons.find(x => x.seasonNumber === s);
-            }
-            season.episodeCount = episodeData.length;
-
-            for (const epData of episodeData) {
-                let episode = season.episodes.find(e => e.episodeNumber === epData.episodeNumber);
-                if (!episode) {
-                    season.episodes.push({
-                        episodeNumber: epData.episodeNumber,
-                        title: epData.title,
-                        rating: epData.rating,
-                        released: epData.released,
-                        magnet: [],
-                    });
-                } else {
-                    if (!episode.title) episode.title = epData.title;
-                    if (!episode.rating) episode.rating = epData.rating;
-                    if (!episode.released) episode.released = epData.released;
-                }
-            }
-            season.episodes.sort((a, b) => a.episodeNumber - b.episodeNumber);
-            enrichedAny = true;
-
-            await new Promise((r) => setTimeout(r, 400));
-        }
-
-        if (enrichedAny) {
-            show.seasons.sort((a, b) => a.seasonNumber - b.seasonNumber);
-            show.episodesEnriched = true;
-            await show.save();
-            console.log(`  Enriched episodes: ${show.title} (${numSeasons} seasons)`);
+        const enriched = await enrichOneSeries(show, { parallel: false });
+        if (enriched) {
+            console.log(`  Enriched episodes: ${show.title} (${show.totalSeasons || show.seasons.length} seasons)`);
         }
     }
 };
 
-module.exports = { startContinuousSeeding, stopSeeding, enrichSeriesEpisodes };
+module.exports = { startContinuousSeeding, stopSeeding, enrichSeriesEpisodes, enrichOneSeries };

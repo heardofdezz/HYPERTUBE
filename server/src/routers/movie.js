@@ -10,6 +10,8 @@ const OS = require('opensubtitles-api');
 const Config = require('../config/Config');
 const Movie = require('../models/Movie');
 const { showMovie } = require('../functions/movie');
+const { enrichOneSeries } = require('../config/setup');
+const ImdbService = require('../services/ImdbService');
 
 const OpenSubtitles = new OS({
     useragent: Config.opensubtitles.useragent,
@@ -317,6 +319,24 @@ router.get('/movie/:id', async (req, res) => {
         if (!movie) {
             return res.status(404).json({ error: 'Movie not found' });
         }
+
+        // On-demand episode enrichment: if a user opens a freshly-ingested series,
+        // fetch OMDB episode titles/ratings/dates synchronously so they don't see bare numbers.
+        // Parallel fetch, capped at 20 seasons to bound latency and quota use.
+        if (
+            movie.contentType === 'series' &&
+            !movie.episodesEnriched &&
+            movie.imdb_code &&
+            ImdbService.isQuotaAvailable()
+        ) {
+            try {
+                await enrichOneSeries(movie, { parallel: true, maxSeasons: 20 });
+            } catch (e) {
+                // Non-fatal — fall back to whatever metadata we already have
+                console.warn('On-demand enrichment failed:', e.message);
+            }
+        }
+
         const obj = movie.toObject();
 
         // Indicate magnet availability
@@ -367,12 +387,19 @@ router.get('/movie/:id', async (req, res) => {
 router.get('/subtitles/:id', async (req, res) => {
     try {
         const movie = await Movie.findById(req.params.id);
-        OpenSubtitles.search({
+        const season = req.query.season != null ? Number(req.query.season) : undefined;
+        const episode = req.query.episode != null ? Number(req.query.episode) : undefined;
+
+        const searchParams = {
             sublanguageid: ['fre', 'eng'].join(),
             extensions: 'srt',
             limit: 'all',
-            imdbid: movie.imdb_code
-        })
+            imdbid: movie.imdb_code,
+        };
+        if (Number.isFinite(season)) searchParams.season = season;
+        if (Number.isFinite(episode)) searchParams.episode = episode;
+
+        OpenSubtitles.search(searchParams)
             .then((subtitles) => {
                 const subtitlesPath = path.join(__dirname, 'subtitles');
                 if (!fs.existsSync(subtitlesPath)) {
