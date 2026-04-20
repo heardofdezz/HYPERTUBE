@@ -78,6 +78,28 @@
 
             <!-- Home: Category Rows -->
             <div v-else class="browse-rows">
+                <!-- Continue Watching -->
+                <div class="category-row" v-if="continueWatching.length > 0">
+                    <h2 class="row-title"><RotateCcw :size="18" /> Continue Watching</h2>
+                    <div class="row-container">
+                        <button class="scroll-btn scroll-left" @click="scrollRow($event, -1)"><ChevronLeft :size="24" /></button>
+                        <div class="row-movies">
+                            <div v-for="entry in continueWatching" :key="'cw-' + entry.movieId + (entry.season || '') + (entry.episode || '')" class="movie-card continue-card" @click="resumeProgress(entry)">
+                                <img v-if="entry.cover" :src="entry.cover" :alt="entry.title" class="movie-poster" loading="lazy" />
+                                <div v-else class="movie-poster-placeholder"><span>{{ entry.title }}</span></div>
+                                <span v-if="entry.contentType === 'series'" class="type-tag">TV</span>
+                                <button class="continue-close" @click.stop="removeProgress(entry)" title="Remove"><XIcon :size="14" /></button>
+                                <div class="continue-progress"><div class="continue-progress-bar" :style="{ width: progressPct(entry) + '%' }"></div></div>
+                                <div class="card-overlay continue-overlay">
+                                    <h3>{{ entry.title }}</h3>
+                                    <p v-if="entry.season != null">S{{ entry.season }}E{{ entry.episode }}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="scroll-btn scroll-right" @click="scrollRow($event, 1)"><ChevronRight :size="24" /></button>
+                    </div>
+                </div>
+
                 <!-- Recently Added -->
                 <div class="category-row" v-if="recentlyAdded.length > 0">
                     <h2 class="row-title"><Clock :size="18" /> Recently Added</h2>
@@ -140,13 +162,14 @@
 
 <script>
 import MoviesService from '@/services/MoviesService';
-import { Search, X, SearchX, Play, Info, ChevronLeft, ChevronRight, Film, Star, TrendingUp, Clock } from 'lucide-vue-next';
+import { getAllProgress, clearProgress } from '@/services/ProgressService';
+import { Search, X, SearchX, Play, Info, ChevronLeft, ChevronRight, Film, Star, TrendingUp, Clock, RotateCcw, X as XIcon } from 'lucide-vue-next';
 
 export default {
     name: 'BrowsePage',
-    components: { Search, X, SearchX, Play, Info, ChevronLeft, ChevronRight, Film, Star, TrendingUp, Clock },
+    components: { Search, X, SearchX, Play, Info, ChevronLeft, ChevronRight, Film, Star, TrendingUp, Clock, RotateCcw, XIcon },
     data() {
-        return { movies: [], loading: true, featuredMovie: null, searchQuery: '', searchActive: false, searching: false, searchDone: false, searchResults: [] };
+        return { movies: [], loading: true, featuredMovie: null, searchQuery: '', searchActive: false, searching: false, searchDone: false, searchResults: [], progressTick: 0 };
     },
     computed: {
         isFiltered() { return !!this.$route.query.type || !!this.$route.query.category; },
@@ -166,6 +189,10 @@ export default {
         trendingMovies() {
             return [...this.uniqueMovies].filter(m => m.cover).sort((a, b) => (b.seeds || 0) - (a.seeds || 0)).slice(0, 20);
         },
+        continueWatching() {
+            this.progressTick; // eslint-disable-line no-unused-expressions
+            return getAllProgress().slice(0, 15);
+        },
         moviesByCategory() {
             const cats = {};
             this.uniqueMovies.forEach(movie => {
@@ -183,6 +210,15 @@ export default {
     async mounted() {
         if (this.$route.query.q) { this.searchQuery = this.$route.query.q; this.searchActive = true; await this.searchTorrents(); }
         await this.fetchMovies();
+        this._refreshProgress = () => { this.progressTick++; };
+        window.addEventListener('focus', this._refreshProgress);
+        document.addEventListener('visibilitychange', this._refreshProgress);
+    },
+    beforeUnmount() {
+        if (this._refreshProgress) {
+            window.removeEventListener('focus', this._refreshProgress);
+            document.removeEventListener('visibilitychange', this._refreshProgress);
+        }
     },
     watch: {
         '$route.query.q'(q) { if (q) { this.searchQuery = q; this.searchActive = true; this.searchTorrents(); } },
@@ -218,6 +254,21 @@ export default {
         clearSearch() { this.searchQuery = ''; this.searchActive = false; this.searchResults = []; this.searchDone = false; },
         goToMovie(m) { this.$router.push({ name: 'MovieDetail', params: { id: m._id } }); },
         playMovie(m) { this.$router.push({ name: 'Watch', params: { id: m._id } }); },
+        resumeProgress(entry) {
+            const query = {};
+            if (entry.season != null) query.season = entry.season;
+            if (entry.episode != null) query.episode = entry.episode;
+            if (entry.quality) query.quality = entry.quality;
+            this.$router.push({ name: 'Watch', params: { id: entry.movieId }, query });
+        },
+        removeProgress(entry) {
+            clearProgress(entry.movieId, entry.season, entry.episode);
+            this.progressTick++;
+        },
+        progressPct(entry) {
+            if (!entry?.duration) return 0;
+            return Math.min(100, (entry.position / entry.duration) * 100);
+        },
         truncate(t, l) { return !t ? '' : t.length > l ? t.substring(0, l) + '...' : t; },
         scrollRow(e, d) { const c = e.target.closest('.row-container').querySelector('.row-movies'); c.scrollBy({ left: d * c.clientWidth * 0.75, behavior: 'smooth' }); },
     },
@@ -283,6 +334,15 @@ export default {
 .movie-card:hover .card-overlay { opacity: 1; }
 .card-overlay h3 { color: #fff; font-size: 0.78rem; font-weight: 700; margin: 0 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-overlay p { color: #999; font-size: 0.68rem; margin: 0; }
+
+/* Continue Watching card */
+.continue-card { position: relative; }
+.continue-close { position: absolute; top: 7px; right: 7px; z-index: 6; background: rgba(0,0,0,0.75); border: none; color: #fff; width: 22px; height: 22px; border-radius: 50%; cursor: pointer; display: none; align-items: center; justify-content: center; padding: 0; }
+.continue-card:hover .continue-close { display: flex; }
+.continue-close:hover { background: #E50914; }
+.continue-progress { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: rgba(255,255,255,0.2); z-index: 5; }
+.continue-progress-bar { height: 100%; background: #E50914; }
+.continue-overlay { padding-bottom: 14px; }
 
 .loading-state { padding: 40px 4%; }
 .skeleton-row { margin-bottom: 36px; }

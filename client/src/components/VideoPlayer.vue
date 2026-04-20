@@ -40,6 +40,8 @@
                 :src="streamUrl"
                 @error="onVideoError"
                 @ended="onVideoEnded"
+                @loadedmetadata="onMetadataLoaded"
+                @timeupdate="onTimeUpdate"
             >
                 <track v-if="subtitles.en" kind="subtitles" :src="apiBase + subtitles.en" srclang="en" label="English" />
                 <track v-if="subtitles.fr" kind="subtitles" :src="apiBase + subtitles.fr" srclang="fr" label="French" />
@@ -73,7 +75,10 @@
 
 <script>
 import Api from '@/services/Api';
+import { saveProgress, getProgress, clearProgress } from '@/services/ProgressService';
 import { ArrowLeft, AlertCircle, Wifi, ArrowDown, HardDrive, Play, Star } from 'lucide-vue-next';
+
+const SAVE_INTERVAL_SECONDS = 5;
 
 export default {
     name: 'VideoPlayer',
@@ -91,9 +96,18 @@ export default {
             nextCountdown: 10,
             nextTimer: null,
             stats: { status: 'connecting', progress: 0, downloaded: 0, downloadedFormatted: '0 B', fileSize: 0, fileSizeFormatted: '0 B', speed: 0, speedFormatted: '0 B/s', peers: 0, fileName: '' },
+            lastSavedAt: 0,
         };
     },
     computed: {
+        routeSeason() {
+            const s = this.$route.query.season;
+            return s != null ? Number(s) : undefined;
+        },
+        routeEpisode() {
+            const e = this.$route.query.episode;
+            return e != null ? Number(e) : undefined;
+        },
         displayProgress() { return this.stats.progress || 0; },
         episodeLabel() {
             const s = this.$route.query.season;
@@ -140,6 +154,7 @@ export default {
     beforeUnmount() {
         if (this.pollTimer) clearInterval(this.pollTimer);
         if (this.nextTimer) clearInterval(this.nextTimer);
+        this.persistProgress();
     },
     methods: {
         buildQueryString() {
@@ -177,13 +192,49 @@ export default {
             } catch (err) { /* keep polling */ }
         },
         async loadSubtitles() {
-            try { const r = await Api().get(`subtitles/${this.$route.params.id}`); this.subtitles = r.data; }
-            catch (err) { /* optional */ }
+            try {
+                const params = new URLSearchParams();
+                if (this.$route.query.season) params.set('season', this.$route.query.season);
+                if (this.$route.query.episode) params.set('episode', this.$route.query.episode);
+                const qs = params.toString();
+                const r = await Api().get(`subtitles/${this.$route.params.id}${qs ? '?' + qs : ''}`);
+                this.subtitles = r.data;
+            } catch (err) { /* optional */ }
+        },
+        onMetadataLoaded() {
+            const saved = getProgress(this.$route.params.id, this.routeSeason, this.routeEpisode);
+            if (!saved || !this.$refs.video) return;
+            const duration = this.$refs.video.duration;
+            if (saved.position > 10 && (!duration || saved.position < duration - 30)) {
+                this.$refs.video.currentTime = saved.position;
+            }
+        },
+        onTimeUpdate() {
+            if (!this.$refs.video) return;
+            const now = Date.now();
+            if (now - this.lastSavedAt < SAVE_INTERVAL_SECONDS * 1000) return;
+            this.lastSavedAt = now;
+            this.persistProgress();
+        },
+        persistProgress() {
+            if (!this.$refs.video || !this.movie) return;
+            saveProgress({
+                movieId: this.$route.params.id,
+                season: this.routeSeason,
+                episode: this.routeEpisode,
+                position: this.$refs.video.currentTime,
+                duration: this.$refs.video.duration || null,
+                title: this.movie.title,
+                cover: this.movie.cover,
+                contentType: this.movie.contentType,
+                quality: this.$route.query.quality || null,
+            });
         },
         onVideoError() {
             if (this.ready) { this.error = 'Playback failed. Retrying...'; this.ready = false; this.startPrepare(); }
         },
         onVideoEnded() {
+            clearProgress(this.$route.params.id, this.routeSeason, this.routeEpisode);
             if (this.nextEpisode) {
                 this.showNextOverlay = true;
                 this.nextCountdown = 10;
@@ -202,7 +253,9 @@ export default {
             // Reset player state for new episode
             this.$nextTick(() => {
                 this.ready = false; this.streamUrl = null; this.error = null;
+                this.subtitles = { en: null, fr: null };
                 this.startPrepare();
+                this.loadSubtitles();
             });
         },
         goBack() {

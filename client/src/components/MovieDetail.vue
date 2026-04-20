@@ -29,9 +29,19 @@
                                 @click="selectedQuality = q"
                             >{{ q }}</button>
                         </div>
+                        <button v-if="resumeTarget" class="btn-play-large btn-resume" @click="playResume">
+                            <RotateCcw :size="22" />
+                            <span>
+                                Resume
+                                <template v-if="resumeTarget.type === 'episode'">
+                                    S{{ resumeTarget.season }}E{{ resumeTarget.episode }}
+                                </template>
+                                <span class="resume-time">from {{ formatRemaining(resumeTarget.progress) }}</span>
+                            </span>
+                        </button>
                         <button class="btn-play-large" @click="playDefault">
                             <Play :size="24" />
-                            {{ movie.contentType === 'series' && firstEpisode ? `Play S${firstEpisode.season}E${firstEpisode.episode}` : 'Play' }}
+                            {{ resumeTarget ? 'Start Over' : (movie.contentType === 'series' && firstEpisode ? `Play S${firstEpisode.season}E${firstEpisode.episode}` : 'Play') }}
                         </button>
                     </div>
                 </div>
@@ -88,12 +98,16 @@
                                 <span v-if="ep.rating" class="ep-rating"><Star :size="11" /> {{ ep.rating }}</span>
                             </h3>
                             <p v-if="ep.released" class="ep-desc">{{ formatDate(ep.released) }}</p>
+                            <div v-if="episodeProgress(selectedSeason, ep.episodeNumber)" class="ep-progress">
+                                <div class="ep-progress-bar" :style="{ width: episodeProgressPct(selectedSeason, ep.episodeNumber) + '%' }"></div>
+                            </div>
                             <div v-if="ep.qualities && ep.qualities.length" class="ep-qualities">
                                 <span v-for="q in ep.qualities" :key="q" class="quality-tag">{{ q }}</span>
                             </div>
                         </div>
                     </div>
-                    <Play v-if="ep.hasMagnet" :size="18" class="ep-play-icon" />
+                    <RotateCcw v-if="ep.hasMagnet && episodeProgress(selectedSeason, ep.episodeNumber)" :size="18" class="ep-play-icon" />
+                    <Play v-else-if="ep.hasMagnet" :size="18" class="ep-play-icon" />
                     <span v-else class="ep-unavailable">No source</span>
                 </div>
 
@@ -128,11 +142,12 @@
 
 <script>
 import Api from '@/services/Api';
-import { ArrowLeft, Play, User, Tv, Download, Star } from 'lucide-vue-next';
+import { getProgress, clearProgress, formatTime } from '@/services/ProgressService';
+import { ArrowLeft, Play, User, Tv, Download, Star, RotateCcw } from 'lucide-vue-next';
 
 export default {
     name: 'MovieDetail',
-    components: { ArrowLeft, Play, User, Tv, Download, Star },
+    components: { ArrowLeft, Play, User, Tv, Download, Star, RotateCcw },
     data() {
         return {
             movie: null,
@@ -140,6 +155,7 @@ export default {
             newComment: '',
             selectedSeason: 1,
             selectedQuality: null,
+            progressTick: 0,
         };
     },
     computed: {
@@ -158,6 +174,30 @@ export default {
             if (s.hasMagnet) return { season: s.seasonNumber, episode: null };
             return null;
         },
+        movieProgress() {
+            // progressTick is referenced to trigger recompute on localStorage changes
+            this.progressTick; // eslint-disable-line no-unused-expressions
+            if (!this.movie || this.movie.contentType === 'series') return null;
+            return getProgress(this.movie._id);
+        },
+        resumeTarget() {
+            // For series, resume the most recently watched episode if any
+            this.progressTick; // eslint-disable-line no-unused-expressions
+            if (!this.movie) return null;
+            if (this.movie.contentType !== 'series') {
+                return this.movieProgress ? { type: 'movie', progress: this.movieProgress } : null;
+            }
+            let best = null;
+            for (const season of (this.movie.seasons || [])) {
+                for (const ep of (season.episodes || [])) {
+                    const p = getProgress(this.movie._id, season.seasonNumber, ep.episodeNumber);
+                    if (p && (!best || p.updatedAt > best.progress.updatedAt)) {
+                        best = { type: 'episode', season: season.seasonNumber, episode: ep.episodeNumber, progress: p };
+                    }
+                }
+            }
+            return best;
+        },
         availableQualities() {
             if (this.movie?.qualities?.length) return this.movie.qualities;
             if (this.currentSeasonData) {
@@ -174,6 +214,13 @@ export default {
     },
     methods: {
         playDefault() {
+            // If user chose "Start Over" (resume exists), clear the target's saved position first
+            if (this.resumeTarget) {
+                const r = this.resumeTarget;
+                if (r.type === 'movie') clearProgress(this.movie._id);
+                else clearProgress(this.movie._id, r.season, r.episode);
+                this.progressTick++;
+            }
             if (this.movie.contentType === 'series' && this.firstEpisode) {
                 if (this.firstEpisode.episode) this.playEpisode(this.firstEpisode.season, this.firstEpisode.episode);
                 else this.playSeason(this.firstEpisode.season);
@@ -194,6 +241,25 @@ export default {
             const query = { season };
             if (this.selectedQuality) query.quality = this.selectedQuality;
             this.$router.push({ name: 'Watch', params: { id: this.movie._id }, query });
+        },
+        episodeProgress(season, episode) {
+            this.progressTick; // eslint-disable-line no-unused-expressions
+            return getProgress(this.movie._id, season, episode);
+        },
+        episodeProgressPct(season, episode) {
+            const p = this.episodeProgress(season, episode);
+            if (!p?.duration) return 0;
+            return Math.min(100, (p.position / p.duration) * 100);
+        },
+        playResume() {
+            const r = this.resumeTarget;
+            if (!r) return;
+            if (r.type === 'movie') this.playMovie();
+            else this.playEpisode(r.season, r.episode);
+        },
+        formatRemaining(progress) {
+            if (!progress) return '';
+            return formatTime(progress.position);
         },
         formatDate(d) {
             if (!d || d === 'N/A') return '';
@@ -242,8 +308,10 @@ export default {
 .genres-text { color: #888; }
 .detail-summary { color: #ccc; font-size: 0.9rem; line-height: 1.5; margin-bottom: 20px; max-width: 550px; }
 .detail-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-.btn-play-large { display: inline-flex; align-items: center; gap: 8px; background: #fff; color: #000; border: none; border-radius: 4px; padding: 11px 32px; font-size: 1.1rem; font-weight: 700; cursor: pointer; transition: opacity 0.2s; }
+.btn-play-large { display: inline-flex; align-items: center; gap: 8px; background: #fff; color: #000; border: none; border-radius: 4px; padding: 11px 24px; font-size: 1.05rem; font-weight: 700; cursor: pointer; transition: opacity 0.2s; }
 .btn-play-large:hover { opacity: 0.85; }
+.btn-resume { background: #E50914; color: #fff; }
+.btn-resume .resume-time { display: block; font-size: 0.7rem; font-weight: 500; opacity: 0.85; margin-top: 1px; }
 
 /* Quality selector */
 .quality-group { display: flex; gap: 4px; }
@@ -282,6 +350,8 @@ export default {
 .ep-info h3 { color: #e5e5e5; font-size: 0.9rem; font-weight: 600; margin: 0 0 2px; display: flex; align-items: center; gap: 8px; }
 .ep-rating { color: #f5c518; font-size: 0.75rem; font-weight: 600; display: inline-flex; align-items: center; gap: 2px; }
 .ep-desc { color: #666; font-size: 0.78rem; margin: 0; }
+.ep-progress { width: 180px; height: 3px; background: #333; border-radius: 2px; margin-top: 6px; overflow: hidden; max-width: 100%; }
+.ep-progress-bar { height: 100%; background: #E50914; transition: width 0.3s; }
 .ep-qualities { display: flex; gap: 4px; margin-top: 4px; }
 .quality-tag { background: #222; color: #888; font-size: 0.65rem; padding: 1px 6px; border-radius: 2px; }
 .ep-play-icon { color: #999; flex-shrink: 0; transition: color 0.2s; }
