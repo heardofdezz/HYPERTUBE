@@ -143,6 +143,8 @@
 <script>
 import Api from '@/services/Api';
 import { getProgress, clearProgress, formatTime } from '@/services/ProgressService';
+
+let warmupInFlight = null;
 import { ArrowLeft, Play, User, Tv, Download, Star, RotateCcw } from 'lucide-vue-next';
 
 export default {
@@ -272,8 +274,33 @@ export default {
                 const response = await Api().get(`movie/${this.$route.params.id}`);
                 this.movie = response.data;
                 if (this.movie.seasons?.length) this.selectedSeason = this.movie.seasons[0].seasonNumber;
+                this.warmUpTorrent();
             } catch (err) { console.error('Failed to load:', err); }
             finally { this.loading = false; }
+        },
+        warmUpTorrent() {
+            if (!this.movie) return;
+            const params = new URLSearchParams();
+            if (this.movie.contentType === 'series') {
+                // Prefer the episode the user would see "Resume" on; fall back to first available
+                const resume = this.resumeTarget;
+                const target = resume?.type === 'episode'
+                    ? { season: resume.season, episode: resume.episode }
+                    : this.firstEpisode;
+                if (!target) return;
+                params.set('season', target.season);
+                if (target.episode) params.set('episode', target.episode);
+            } else if (!this.movie.hasMagnet) {
+                return;
+            }
+            if (this.selectedQuality) params.set('quality', this.selectedQuality);
+            const qs = params.toString();
+            const key = `${this.movie._id}?${qs}`;
+            if (warmupInFlight === key) return; // already warming this exact target
+            warmupInFlight = key;
+            Api().get(`prepare/${this.movie._id}${qs ? '?' + qs : ''}`)
+                .catch(() => {})
+                .finally(() => { if (warmupInFlight === key) warmupInFlight = null; });
         },
         async addComment() {
             if (!this.newComment.trim()) return;

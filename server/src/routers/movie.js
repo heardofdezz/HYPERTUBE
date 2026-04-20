@@ -250,6 +250,13 @@ router.get('/categories', async (req, res) => {
     }
 });
 
+const DEFAULT_BUFFER_TARGET = 2 * 1024 * 1024;
+
+function computeBufferTarget(fileSize) {
+    // Mirror the readiness threshold used in getOrCreateSession's progressInterval
+    return fileSize > 0 ? Math.min(DEFAULT_BUFFER_TARGET, fileSize * 0.02) : DEFAULT_BUFFER_TARGET;
+}
+
 // Start preparing a stream (call before /stream to pre-buffer)
 router.get('/prepare/:id', async (req, res) => {
     try {
@@ -268,6 +275,7 @@ router.get('/prepare/:id', async (req, res) => {
             speedFormatted: formatBytes(session.speed) + '/s',
             peers: session.peers,
             fileName: session.fileName,
+            bufferTarget: computeBufferTarget(session.fileSize),
             error: session.error || null,
         });
     } catch (e) {
