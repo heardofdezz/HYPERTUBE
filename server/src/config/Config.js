@@ -19,8 +19,9 @@ module.exports = {
         password: process.env.OPENSUBTITLES_PASSWORD || ''
     },
     torrent: {
-        providers: (process.env.TORRENT_PROVIDERS || 'ThePirateBay').split(',').map(s => s.trim()),
+        providers: (process.env.TORRENT_PROVIDERS || '').split(',').map(s => s.trim()).filter(Boolean),
         defaultLimit: Number(process.env.TORRENT_SEARCH_LIMIT) || 20,
         cacheTTLHours: Number(process.env.TORRENT_CACHE_TTL_HOURS) || 24,
+        searchQueries: (process.env.SEARCH_QUERIES || '').split(',').map(s => s.trim()).filter(Boolean),
     }
 }
