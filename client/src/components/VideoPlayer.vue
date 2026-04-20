@@ -7,6 +7,8 @@
 
         <!-- Buffering -->
         <div v-if="!ready" class="player-loading">
+            <div v-if="movie?.cover" class="loading-backdrop" :style="{ backgroundImage: `url(${movie.cover})` }"></div>
+            <div class="loading-scrim"></div>
             <div v-if="error" class="loading-error">
                 <AlertCircle :size="48" color="#E50914" />
                 <p>{{ error }}</p>
@@ -95,8 +97,9 @@ export default {
             showNextOverlay: false,
             nextCountdown: 10,
             nextTimer: null,
-            stats: { status: 'connecting', progress: 0, downloaded: 0, downloadedFormatted: '0 B', fileSize: 0, fileSizeFormatted: '0 B', speed: 0, speedFormatted: '0 B/s', peers: 0, fileName: '' },
+            stats: { status: 'connecting', progress: 0, downloaded: 0, downloadedFormatted: '0 B', fileSize: 0, fileSizeFormatted: '0 B', speed: 0, speedFormatted: '0 B/s', peers: 0, fileName: '', bufferTarget: 0 },
             lastSavedAt: 0,
+            etaSmoothed: null,
         };
     },
     computed: {
@@ -117,13 +120,16 @@ export default {
             return '';
         },
         statusMessage() {
-            switch (this.stats.status) {
-                case 'connecting': return 'Finding peers...';
-                case 'buffering': return 'Buffering video...';
-                case 'ready': return 'Starting playback...';
-                default: return 'Preparing stream...';
+            if (this.stats.status === 'ready') return 'Starting playback...';
+            if (this.stats.peers === 0) return 'Finding peers...';
+            if (this.etaSeconds != null) {
+                if (this.etaSeconds <= 1) return 'Almost ready...';
+                return `Starting in ~${this.etaSeconds}s`;
             }
+            if (this.stats.status === 'buffering') return 'Buffering...';
+            return 'Preparing stream...';
         },
+        etaSeconds() { return this.etaSmoothed; },
         nextEpisode() {
             if (!this.movie || this.movie.contentType !== 'series' || !this.movie.seasons) return null;
             const s = Number(this.$route.query.season);
@@ -181,6 +187,7 @@ export default {
                 const qs = this.buildQueryString();
                 const response = await Api().get(`prepare/${this.$route.params.id}${qs}`);
                 this.stats = response.data;
+                this.updateEta();
                 if (this.stats.status === 'ready') {
                     clearInterval(this.pollTimer); this.pollTimer = null;
                     this.streamUrl = `${this.apiBase}/stream/${this.$route.params.id}${qs}`;
@@ -200,6 +207,17 @@ export default {
                 const r = await Api().get(`subtitles/${this.$route.params.id}${qs ? '?' + qs : ''}`);
                 this.subtitles = r.data;
             } catch (err) { /* optional */ }
+        },
+        updateEta() {
+            const { bufferTarget, downloaded, speed } = this.stats;
+            if (!bufferTarget || !speed || speed <= 0) {
+                this.etaSmoothed = null;
+                return;
+            }
+            const remaining = Math.max(0, bufferTarget - downloaded);
+            const raw = Math.max(1, Math.round(remaining / speed));
+            // Exponential smoothing to avoid flicker
+            this.etaSmoothed = this.etaSmoothed == null ? raw : Math.round(this.etaSmoothed * 0.6 + raw * 0.4);
         },
         onMetadataLoaded() {
             const saved = getProgress(this.$route.params.id, this.routeSeason, this.routeEpisode);
@@ -254,6 +272,7 @@ export default {
             this.$nextTick(() => {
                 this.ready = false; this.streamUrl = null; this.error = null;
                 this.subtitles = { en: null, fr: null };
+                this.etaSmoothed = null;
                 this.startPrepare();
                 this.loadSubtitles();
             });
@@ -272,7 +291,10 @@ export default {
 .btn-back { position: fixed; top: 20px; left: 20px; z-index: 100; display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.6); border: none; border-radius: 4px; color: #fff; padding: 10px 18px; font-size: 0.9rem; cursor: pointer; transition: background 0.2s; }
 .btn-back:hover { background: rgba(255,255,255,0.15); }
 
-.player-loading { flex: 1; display: flex; align-items: center; justify-content: center; }
+.player-loading { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+.loading-backdrop { position: absolute; inset: 0; background-size: cover; background-position: center; filter: blur(20px) brightness(0.35); transform: scale(1.1); z-index: 0; }
+.loading-scrim { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.85) 80%); z-index: 1; }
+.loading-progress, .loading-error { position: relative; z-index: 2; }
 .loading-error { display: flex; flex-direction: column; align-items: center; gap: 16px; color: #999; }
 .loading-error p { font-size: 1rem; max-width: 400px; text-align: center; }
 .btn-retry { background: #E50914; color: #fff; border: none; border-radius: 4px; padding: 10px 24px; font-weight: 700; cursor: pointer; }
