@@ -64,7 +64,21 @@ docker compose up mongo -d
 brew services start mongodb-community
 ```
 
-### 3. Configure environment
+### 3. Seed the database (optional, recommended)
+
+The repo ships with a ~320 KB snapshot of the catalog (movies, TV shows, anime) at `seed/hypertube.archive.gz`. Restoring it gives you an instant populated library instead of waiting hours for the continuous seeder to fill the DB on first run.
+
+```bash
+# With Docker Mongo (container name: hypertube-mongo-1)
+cat seed/hypertube.archive.gz | docker exec -i hypertube-mongo-1 mongorestore --archive --gzip --drop
+
+# With local Mongo tools
+mongorestore --archive=seed/hypertube.archive.gz --gzip --drop
+```
+
+The seeder will keep running after restore and add new titles on top. Any `filePath` / `isDownloaded` flags in seeded docs reset automatically on first playback.
+
+### 4. Configure environment
 
 ```bash
 cp server/.env.example server/.env
@@ -76,7 +90,7 @@ Add your OMDB API key to `server/.env`:
 IMDB_API_KEY=your-omdb-key
 ```
 
-### 4. Run
+### 5. Run
 
 ```bash
 # Production (PM2 — runs in background, auto-restarts)
@@ -105,7 +119,7 @@ npm run status     # Check if running
 
 PM2 auto-restarts on crash, caps memory at 500MB, and keeps the seeder running continuously.
 
-### 5. Docker (optional)
+### 6. Docker (optional)
 
 ```bash
 docker compose up --build
