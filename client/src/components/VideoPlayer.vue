@@ -92,7 +92,7 @@ export default {
             error: null,
             streamUrl: null,
             subtitles: { en: null, fr: null },
-            apiBase: 'http://localhost:8081',
+            apiBase: process.env.API_BASE_URL || '',
             pollTimer: null,
             showNextOverlay: false,
             nextCountdown: 10,

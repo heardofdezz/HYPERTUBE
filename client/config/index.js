@@ -10,7 +10,19 @@ module.exports = {
     // Paths
     assetsSubDirectory: 'static',
     assetsPublicPath: '/',
-    proxyTable: [],
+
+    // Proxy API calls to the server in dev so the client can use relative URLs.
+    // Override target with API_PROXY_TARGET env var (e.g. when server runs in Docker).
+    proxyTable: [
+      {
+        context: [
+          '/movies', '/search', '/movie', '/prepare', '/stream',
+          '/subtitles', '/subtitles-file', '/categories', '/comment'
+        ],
+        target: process.env.API_PROXY_TARGET || 'http://localhost:8081',
+        changeOrigin: true,
+      },
+    ],
 
     // Various Dev Server settings
     host: 'localhost', // can be overwritten by process.env.HOST

@@ -79,6 +79,8 @@ Open http://localhost:8080 in your browser.
 docker compose up --build
 ```
 
+This starts Mongo, the server, and an nginx-served client in one shot. The client container reverse-proxies API calls to the server, so everything runs on a single origin (`http://localhost:8080`) — no CORS setup needed. If `server/.env` is present its values are picked up; otherwise the server falls back to built-in defaults (no OMDB key = no catalog enrichment).
+
 ---
 
 ## Server management
