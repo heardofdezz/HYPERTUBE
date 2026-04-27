@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const helmet = require('helmet');
 const morgan = require('morgan');
 const mongoose = require('mongoose');
 const Config = require('./config/Config');
@@ -16,6 +17,10 @@ const { apiLimiter } = require('./middleware/rateLimit');
 // (required for accurate per-IP rate limiting via X-Forwarded-For).
 app.set('trust proxy', 1);
 
+// Disable CSP at the API layer — this server returns JSON, video, and VTT
+// (no HTML), so a CSP here adds noise without protection. The CSP that
+// matters is set by nginx on the SPA's index.html.
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(morgan('combined'));
 app.use(bodyParser.json());
 app.use(apiLimiter);
