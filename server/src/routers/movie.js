@@ -2,6 +2,8 @@ const express = require('express');
 const router = new express.Router();
 const path = require('path');
 const fs = require('fs');
+const fsp = require('fs/promises');
+const { pipeline } = require('stream/promises');
 const mime = require('mime').default || require('mime');
 const torrentStream = require('torrent-stream');
 const srt2vtt = require('srt-to-vtt');
@@ -435,9 +437,42 @@ router.get('/movie/:id', async (req, res) => {
     }
 });
 
+// Download one .srt and convert it to .vtt. Returns the public URL or
+// undefined if anything fails — per-language failures must not abort the
+// other language.
+async function fetchAndConvertSubtitle(entry) {
+    if (!entry || !entry.url || !entry.filename) return undefined;
+
+    const srtName = path.basename(entry.filename);
+    const srtPath = path.join(SUBTITLES_DIR, srtName);
+    const vttName = path.basename(srtName, '.srt') + '.vtt';
+    const vttPath = path.join(SUBTITLES_DIR, vttName);
+
+    try {
+        await download(entry.url, SUBTITLES_DIR);
+        await fsp.stat(srtPath);
+        // Await the conversion so the .vtt file is on disk before we
+        // hand the URL to the client (the previous fire-and-forget
+        // pipe could 404 on the very next request).
+        await pipeline(
+            fs.createReadStream(srtPath),
+            srt2vtt(),
+            fs.createWriteStream(vttPath),
+        );
+        return '/subtitles-file/' + vttName;
+    } catch (err) {
+        console.error(`Subtitle conversion failed for ${srtName}:`, err.message);
+        return undefined;
+    }
+}
+
 router.get('/subtitles/:id', expensiveLimiter, async (req, res) => {
     try {
         const movie = await Movie.findById(req.params.id);
+        if (!movie) {
+            return res.status(404).json({ error: 'Movie not found' });
+        }
+
         const season = req.query.season != null ? Number(req.query.season) : undefined;
         const episode = req.query.episode != null ? Number(req.query.episode) : undefined;
 
@@ -450,48 +485,34 @@ router.get('/subtitles/:id', expensiveLimiter, async (req, res) => {
         if (Number.isFinite(season)) searchParams.season = season;
         if (Number.isFinite(episode)) searchParams.episode = episode;
 
-        OpenSubtitles.search(searchParams)
-            .then((subtitles) => {
-                const subtitlesPath = path.join(__dirname, 'subtitles');
-                if (!fs.existsSync(subtitlesPath)) {
-                    fs.mkdirSync(subtitlesPath, { recursive: true });
-                }
-                const result = { en: undefined, fr: undefined };
+        let subtitles;
+        try {
+            subtitles = await OpenSubtitles.search(searchParams);
+        } catch (err) {
+            console.error('Subtitle search failed:', err.message);
+            return res.status(500).json({ error: 'Subtitle search failed' });
+        }
 
-                if (subtitles.en && subtitles.en[0]) {
-                    download(subtitles.en[0].url, subtitlesPath)
-                        .then(() => {
-                            fs.stat(subtitlesPath + '/' + subtitles.en[0].filename, (err) => {
-                                if (err === null) {
-                                    result.en = '/subtitles-file/' + path.basename(subtitles.en[0].filename, '.srt') + '.vtt';
-                                    fs.createReadStream(subtitlesPath + '/' + subtitles.en[0].filename).pipe(srt2vtt()).pipe(fs.createWriteStream(path.join(subtitlesPath, path.basename(subtitles.en[0].filename, '.srt') + '.vtt')));
-                                }
-                                if (subtitles.fr && subtitles.fr[0].url) {
-                                    download(subtitles.fr[0].url, subtitlesPath)
-                                        .then(() => {
-                                            fs.stat(subtitlesPath + '/' + subtitles.fr[0].filename, (err) => {
-                                                if (err === null) {
-                                                    result.fr = '/subtitles-file/' + path.basename(subtitles.fr[0].filename, '.srt') + '.vtt';
-                                                    fs.createReadStream(subtitlesPath + '/' + subtitles.fr[0].filename).pipe(srt2vtt()).pipe(fs.createWriteStream(path.join(subtitlesPath, path.basename(subtitles.fr[0].filename, '.srt') + '.vtt')));
-                                                }
-                                                res.json(result);
-                                            });
-                                        })
-                                        .catch((err) => { console.error(err); res.json(result); });
-                                } else {
-                                    res.json(result);
-                                }
-                            });
-                        })
-                        .catch((err) => { console.error(err); res.status(500).json({ error: 'Failed to download subtitles' }); });
-                } else {
-                    res.status(404).json({ error: 'No subtitles found' });
-                }
-            })
-            .catch((err) => { console.error(err); res.status(500).json({ error: 'Subtitle search failed' }); });
+        const enEntry = subtitles && subtitles.en && subtitles.en[0];
+        const frEntry = subtitles && subtitles.fr && subtitles.fr[0];
+
+        if (!enEntry && !frEntry) {
+            return res.status(404).json({ error: 'No subtitles found' });
+        }
+
+        await fsp.mkdir(SUBTITLES_DIR, { recursive: true });
+
+        const [en, fr] = await Promise.all([
+            fetchAndConvertSubtitle(enEntry),
+            fetchAndConvertSubtitle(frEntry),
+        ]);
+
+        return res.json({ en, fr });
     } catch (e) {
-        console.error(e);
-        res.status(500).json({ error: 'Failed to fetch subtitles' });
+        console.error('Subtitles error:', e);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to fetch subtitles' });
+        }
     }
 });
 
