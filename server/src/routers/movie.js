@@ -12,6 +12,9 @@ const Movie = require('../models/Movie');
 const { showMovie } = require('../functions/movie');
 const { enrichOneSeries } = require('../config/setup');
 const ImdbService = require('../services/ImdbService');
+const { expensiveLimiter } = require('../middleware/rateLimit');
+
+const SUBTITLES_DIR = path.resolve(__dirname, 'subtitles');
 
 const OpenSubtitles = new OS({
     useragent: Config.opensubtitles.useragent,
@@ -22,6 +25,39 @@ const OpenSubtitles = new OS({
 
 // Active torrent sessions — keyed by movie ID
 const sessions = new Map();
+
+// Idle session eviction — drop torrent engines that haven't been touched
+// in a while so a long-running PM2 process doesn't grow unbounded.
+const SESSION_IDLE_MS = 30 * 60 * 1000; // 30 minutes
+const SESSION_SWEEP_MS = 5 * 60 * 1000;  // 5 minutes
+
+function touchSession(session) {
+    session.lastAccess = Date.now();
+}
+
+function destroySession(sessionKey, session) {
+    if (session.progressInterval) {
+        clearInterval(session.progressInterval);
+        session.progressInterval = null;
+    }
+    if (session.engine) {
+        try { session.engine.destroy(); } catch (e) {}
+        session.engine = null;
+    }
+    sessions.delete(sessionKey);
+}
+
+function sweepIdleSessions() {
+    const cutoff = Date.now() - SESSION_IDLE_MS;
+    for (const [key, session] of sessions) {
+        if ((session.lastAccess || 0) < cutoff) {
+            destroySession(key, session);
+            console.log(`Evicted idle session: ${key}`);
+        }
+    }
+}
+
+setInterval(sweepIdleSessions, SESSION_SWEEP_MS).unref();
 
 // Public trackers for faster peer discovery
 const TRACKERS = [
@@ -77,7 +113,9 @@ async function getOrCreateSession(movieId, seasonNum, episodeNum, quality) {
         : movieId;
 
     if (sessions.has(sessionKey)) {
-        return sessions.get(sessionKey);
+        const existing = sessions.get(sessionKey);
+        touchSession(existing);
+        return existing;
     }
 
     const movie = await Movie.findById(movieId);
@@ -98,6 +136,8 @@ async function getOrCreateSession(movieId, seasonNum, episodeNum, quality) {
                 peers: 0,
                 progress: 1,
                 movie,
+                lastAccess: Date.now(),
+                progressInterval: null,
             };
             sessions.set(sessionKey, session);
             return session;
@@ -130,6 +170,8 @@ async function getOrCreateSession(movieId, seasonNum, episodeNum, quality) {
         peers: 0,
         progress: 0,
         movie,
+        lastAccess: Date.now(),
+        progressInterval: null,
     };
     sessions.set(sessionKey, session);
 
@@ -178,9 +220,10 @@ async function getOrCreateSession(movieId, seasonNum, episodeNum, quality) {
 
     // Track download progress
     let lastBytes = 0;
-    const progressInterval = setInterval(() => {
+    session.progressInterval = setInterval(() => {
         if (!session.engine || session.status === 'ready' || session.status === 'error') {
-            clearInterval(progressInterval);
+            clearInterval(session.progressInterval);
+            session.progressInterval = null;
             return;
         }
         const swarm = engine.swarm;
@@ -258,7 +301,7 @@ function computeBufferTarget(fileSize) {
 }
 
 // Start preparing a stream (call before /stream to pre-buffer)
-router.get('/prepare/:id', async (req, res) => {
+router.get('/prepare/:id', expensiveLimiter, async (req, res) => {
     try {
         const seasonNum = req.query.season != null ? Number(req.query.season) : undefined;
         const episodeNum = req.query.episode != null ? Number(req.query.episode) : undefined;
@@ -392,7 +435,7 @@ router.get('/movie/:id', async (req, res) => {
     }
 });
 
-router.get('/subtitles/:id', async (req, res) => {
+router.get('/subtitles/:id', expensiveLimiter, async (req, res) => {
     try {
         const movie = await Movie.findById(req.params.id);
         const season = req.query.season != null ? Number(req.query.season) : undefined;
@@ -453,7 +496,19 @@ router.get('/subtitles/:id', async (req, res) => {
 });
 
 router.get('/subtitles-file/:filename', (req, res) => {
-    const filePath = path.join(__dirname, 'subtitles', req.params.filename);
+    // Strip directory components and only serve .vtt out of SUBTITLES_DIR.
+    // path.basename + extension allowlist + a final containment check defends
+    // against `../`, encoded traversal, and absolute-path tricks.
+    const safeName = path.basename(req.params.filename);
+    if (path.extname(safeName).toLowerCase() !== '.vtt') {
+        return res.status(400).json({ error: 'Invalid subtitle filename' });
+    }
+
+    const filePath = path.resolve(SUBTITLES_DIR, safeName);
+    if (!filePath.startsWith(SUBTITLES_DIR + path.sep)) {
+        return res.status(400).json({ error: 'Invalid subtitle filename' });
+    }
+
     if (fs.existsSync(filePath)) {
         res.setHeader('Content-Type', 'text/vtt');
         fs.createReadStream(filePath).pipe(res);
