@@ -10,9 +10,15 @@ const TorrentSearchService = require('./services/TorrentSearchService');
 const { startContinuousSeeding, enrichSeriesEpisodes } = require('./config/setup');
 const movieRouter = require('./routers/movie');
 const commentRouter = require('./routers/comment');
+const { apiLimiter } = require('./middleware/rateLimit');
+
+// Behind nginx — trust a single proxy hop so req.ip reflects the real client
+// (required for accurate per-IP rate limiting via X-Forwarded-For).
+app.set('trust proxy', 1);
 
 app.use(morgan('combined'));
 app.use(bodyParser.json());
+app.use(apiLimiter);
 
 // CORS: restrict to known origins
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:8080').split(',');
