@@ -1,16 +1,38 @@
 const fs = require('fs');
 const pump = require('pump');
 
+// Reject malformed/unsatisfiable Range headers with 416 instead of letting
+// NaN start/end propagate into the response. Suffix ranges (`bytes=-N`) are
+// not supported — clients that send them will get 416 and can retry without.
+function parseRange(rangeHeader, size) {
+    const match = /^bytes=(\d+)-(\d*)$/.exec(rangeHeader);
+    if (!match) return null;
+
+    const start = parseInt(match[1], 10);
+    let end = match[2] === '' ? size - 1 : parseInt(match[2], 10);
+
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+    if (start < 0 || start >= size || end < start) return null;
+
+    if (end >= size) end = size - 1;
+    return { start, end };
+}
+
 const showMovie = (req, res, size, mimeType, streamSource) => {
     let start = 0;
     let end = size - 1;
 
     if (req.headers.range) {
-        const bytes = req.headers.range.replace(/bytes=/, '').split('-');
-        start = parseInt(bytes[0], 10);
-        if (bytes[1]) {
-            end = parseInt(bytes[1], 10);
+        const range = parseRange(req.headers.range, size);
+        if (!range) {
+            res.writeHead(416, {
+                'Content-Range': `bytes */${size}`,
+                'Content-Type': 'text/plain',
+            });
+            return res.end('Range Not Satisfiable');
         }
+        start = range.start;
+        end = range.end;
         res.writeHead(206, {
             'Content-Range': `bytes ${start}-${end}/${size}`,
             'Accept-Ranges': 'bytes',
@@ -36,4 +58,4 @@ const showMovie = (req, res, size, mimeType, streamSource) => {
     }
 };
 
-module.exports = { showMovie };
+module.exports = { showMovie, parseRange };
